@@ -13,7 +13,6 @@ DELETE_AFTER = 10  # seconds
 ALLOWED_CHANNEL_IDS = {
     1442370325831487608,
     1449692284596523068
-
 }
 
 # ONLY delete messages from these bots
@@ -27,7 +26,11 @@ TARGET_BOT_IDS = {
 # BOT SETUP
 # ================================
 
-TOKEN ="MTQ1NzA5MTE4MTIyNDY2MTAwNA.G_eWdU.2RvOHKSz7p_rF5FF5Lz-0mlMn1HHa4aGb4QpXQ"
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+# 🔒 SAFETY CHECK (VERY IMPORTANT)
+if TOKEN is None:
+    raise RuntimeError("DISCORD_TOKEN environment variable is not set")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -40,15 +43,15 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # Ignore itself
+    # Ignore messages from THIS bot
     if message.author.id == client.user.id:
         return
 
-    # Only allowed channels
+    # Ignore messages NOT in allowed channels
     if message.channel.id not in ALLOWED_CHANNEL_IDS:
         return
 
-    # Only target specific bots
+    # Only delete messages from selected bots
     if message.author.bot and message.author.id in TARGET_BOT_IDS:
         await asyncio.sleep(DELETE_AFTER)
         try:
