@@ -139,3 +139,4 @@ async def daily_count(interaction: discord.Interaction):
 
 client.run(TOKEN)
 
+
