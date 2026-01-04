@@ -26,7 +26,7 @@ TARGET_BOT_IDS = {
 # BOT SETUP
 # ================================
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = "MTQ1NzA5MTE4MTIyNDY2MTAwNA.GYfaAQ.4P9lO280AU14SXK3wZpXm0DNq2FNoES1iYnDfw"
 
 # 🔒 SAFETY CHECK (VERY IMPORTANT)
 if TOKEN is None:
@@ -62,3 +62,4 @@ async def on_message(message):
             print("Missing permissions to delete messages.")
 
 client.run(TOKEN)
+
