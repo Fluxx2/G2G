@@ -6,7 +6,7 @@ import os
 # CONFIG
 # ================================
 
-DELETE_AFTER = 10  # seconds
+DELETE_AFTER = 225 # seconds
 
 # ONLY delete messages in these channels
 # Enable Developer Mode → Right-click channel → Copy ID
@@ -62,3 +62,4 @@ async def on_message(message):
             print("Missing permissions to delete messages.")
 
 client.run(TOKEN)
+
