@@ -84,7 +84,7 @@ async def daily_cleanup_task():
         except Exception as e:
             print(f"Error during auto cleanup: {e}")
         # Wait 24 hours before next run
-        await asyncio.sleep(40)
+        await asyncio.sleep(24*60*60)
 
 # ================================
 # EVENTS
@@ -138,3 +138,4 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
