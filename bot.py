@@ -20,9 +20,14 @@ TARGET_BOT_IDS = {
     628400349979344919
 }
 
+# Log channel for /daily_count result
 LOG_CHANNEL_ID = 1443852961502466090
+
+# Your server ID for instant slash command registration
 GUILD_ID = 1442370324858667041
-AUTO_CHANNEL_ID = 1442370325831487608
+
+# Channel ID where daily cleanup will run automatically
+AUTO_CHANNEL_ID = 1442370326460895246  # <--- set this to the channel you want
 
 # ================================
 # BOT SETUP
@@ -39,22 +44,7 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 # ================================
-# TIME HELPERS (IST MIDNIGHT)
-# ================================
-
-def seconds_until_ist_midnight():
-    now_utc = datetime.now(timezone.utc)
-    ist = timezone(timedelta(hours=5, minutes=30))
-    now_ist = now_utc.astimezone(ist)
-
-    next_midnight_ist = (now_ist + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-
-    return (next_midnight_ist - now_ist).total_seconds()
-
-# ================================
-# CLEANUP LOGIC
+# DAILY CLEANUP FUNCTION
 # ================================
 
 async def cleanup_channel(channel):
@@ -70,39 +60,31 @@ async def cleanup_channel(channel):
         try:
             await message.delete()
             deleted_count += 1
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(0.4)  # rate limit safety
         except (discord.NotFound, discord.Forbidden):
             continue
 
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         await log_channel.send(
-            f"🧹 **Daily Cleanup Complete**\n"
-            f"🏆 **todays win `{deleted_count}`** in <#{channel.id}>"
+            f"🧹 Daily Cleanup Complete\n"
+            f" 🏆  todays win **{deleted_count}** in <#{channel.id}>"
         )
 
 # ================================
-# BACKGROUND TASK (IST MIDNIGHT)
+# BACKGROUND TASK
 # ================================
 
 async def daily_cleanup_task():
     await client.wait_until_ready()
     channel = client.get_channel(AUTO_CHANNEL_ID)
-
     while not client.is_closed():
         try:
-            seconds = seconds_until_ist_midnight()
-            print(f"Next cleanup in {seconds/3600:.2f} hours (IST midnight)")
-            await asyncio.sleep(seconds)
-
             await cleanup_channel(channel)
-
-            # prevent double run
-            await asyncio.sleep(60)
-
         except Exception as e:
-            print(f"Auto cleanup error: {e}")
-            await asyncio.sleep(60)
+            print(f"Error during auto cleanup: {e}")
+        # Wait 24 hours before next run
+        await asyncio.sleep(24*60*60)
 
 # ================================
 # EVENTS
@@ -114,6 +96,7 @@ async def on_ready():
     guild = discord.Object(id=GUILD_ID)
     await tree.sync(guild=guild)
     print(f"Slash commands synced to guild {GUILD_ID}")
+    # Start background task
     client.loop.create_task(daily_cleanup_task())
 
 @client.event
@@ -131,7 +114,7 @@ async def on_message(message):
         except discord.NotFound:
             pass
         except discord.Forbidden:
-            print(f"Missing permissions in {message.channel.id}")
+            print(f"Missing permissions to delete message in {message.channel.id}")
 
 # ================================
 # SLASH COMMAND
@@ -144,10 +127,10 @@ async def on_message(message):
 )
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    await cleanup_channel(interaction.channel)
+    channel = interaction.channel
+    await cleanup_channel(channel)
     await interaction.followup.send(
-        "✅ Daily cleanup done. Total posted in log channel.",
-        ephemeral=True
+        "✅ Daily cleanup done. Total posted in log channel.", ephemeral=True
     )
 
 # ================================
@@ -155,3 +138,6 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
+
+
