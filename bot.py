@@ -138,8 +138,7 @@ async def daily_cleanup_task():
         if log:
             await log.send(
                 f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
-                f"📍 <#{channel.id}>\n"
-                f"🏆 todays win **{deleted}**"
+                f"🏆 todays win **{deleted}** in  <#{channel.id}>"
             )
 
         await asyncio.sleep(60)
@@ -253,3 +252,4 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
