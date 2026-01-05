@@ -113,14 +113,6 @@ async def seconds_until_ist_midnight():
     )
     return (next_midnight - now).total_seconds()
 
-
-async def count_live_messages(channel, user):
-    count = 0
-    async for msg in channel.history(limit=None):
-        if msg.author.id == user.id and not msg.author.bot:
-            count += 1
-    return count
-
 # ================================
 # BACKGROUND TASK
 # ================================
@@ -137,7 +129,8 @@ async def daily_cleanup_task():
         if log:
             await log.send(
                 f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
-                f"🏆 todays win **{deleted}** in <#{channel_id}>"
+                f"📍 <#{channel.id}>\n"
+                f"🏆 todays win **{deleted}**"
             )
 
         await asyncio.sleep(60)
@@ -158,7 +151,6 @@ async def on_message(message):
     if message.author.id == client.user.id:
         return
 
-    # Delete specific bot messages
     if (
         message.channel.id in ALLOWED_CHANNEL_IDS
         and message.author.bot
@@ -170,30 +162,8 @@ async def on_message(message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    # Reaction countdown
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
-
-    # Wins system
-    if message.channel.id == WINS_SOURCE_CHANNEL_ID and not message.author.bot:
-        total = await count_live_messages(message.channel, message.author)
-
-        if total > 0 and total % 10 == 0:
-            announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
-            if not announce:
-                return
-
-            old = last_win_message.get(message.author.id)
-            if old:
-                try:
-                    await old.delete()
-                except (discord.NotFound, discord.Forbidden):
-                    pass
-
-            new = await announce.send(
-                f"{message.author.mention} wins done today so far ({total})"
-            )
-            last_win_message[message.author.id] = new
 
 
 @client.event
@@ -236,11 +206,12 @@ async def daily_count(interaction: discord.Interaction):
     if log:
         await log.send(
             f"🧹 **Manual Daily Cleanup**\n"
-            f"🏆 todays win **{deleted}** in <#{channel_id}>"
+            f"📍 <#{interaction.channel.id}>\n"
+            f"🏆 todays win **{deleted}**"
         )
 
     await interaction.followup.send(
-        f"🏆 todays win **{deleted}** in <#{channel_id}>",
+        f"🏆 todays win **{deleted}**",
         ephemeral=True
     )
 
@@ -249,4 +220,3 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
-
