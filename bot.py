@@ -39,7 +39,7 @@ REACTIONS = [
 # 🔥 Custom emoji mass delete config
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709  # LL emoji ID
-REACTION_THRESHOLD = 6  # MORE THAN 5 PEOPLE
+REACTION_THRESHOLD = 4  # MORE THAN 5 PEOPLE
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -207,3 +207,4 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
