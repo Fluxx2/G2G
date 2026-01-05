@@ -21,13 +21,17 @@ TARGET_BOT_IDS = {
     628400349979344919
 }
 
-COUNTDOWN_CHANNEL_ID = 1442370325831487608
-
 LOG_CHANNEL_ID = 1443852961502466090
 GUILD_ID = 1442370324858667041
 AUTO_CHANNEL_ID = 1442370326460895246
 
-INDIA_TZ = pytz.timezone("Asia/Kolkata")
+# Reaction countdown config
+REACTION_CHANNEL_ID = 1442370325831487608
+REACTION_INTERVAL = 15
+REACTION_DURATION = 240
+REACTIONS = ["⏳", "⌛", "🕒", "⏰"]
+
+IST = pytz.timezone("Asia/Kolkata")
 
 # ================================
 # BOT SETUP
@@ -44,25 +48,29 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 # ================================
-# COUNTDOWN REACTIONS
+# REACTION COUNTDOWN
 # ================================
 
-async def countdown_reactions(message):
-    try:
-        reactions = [
-            "⏳",
-            "🕒","🕒","🕒","🕒",
-            "🟡","🟡","🟡","🟡",
-            "🔴","🔴","🔴","🔴",
-            "3️⃣","2️⃣","1️⃣","🗑️"
-        ]
+async def reaction_countdown(message: discord.Message):
+    if message.author.bot:
+        return
 
-        for emoji in reactions:
-            await message.add_reaction(emoji)
-            await asyncio.sleep(15)
+    steps = REACTION_DURATION // REACTION_INTERVAL
+    last_reaction = None
 
-    except:
-        pass
+    for i in range(steps):
+        try:
+            if last_reaction:
+                await message.remove_reaction(last_reaction, client.user)
+
+            reaction = REACTIONS[i % len(REACTIONS)]
+            await message.add_reaction(reaction)
+            last_reaction = reaction
+
+            await asyncio.sleep(REACTION_INTERVAL)
+
+        except (discord.NotFound, discord.Forbidden):
+            break
 
 # ================================
 # DAILY CLEANUP FUNCTION
@@ -89,30 +97,34 @@ async def cleanup_channel(channel):
     if log_channel:
         await log_channel.send(
             f"🧹 **Daily Cleanup Complete**\n"
-            f"🏆 todays win **{deleted_count}** in <#{channel.id}>"
+            f"🏆 **{deleted_count} messages deleted** in <#{channel.id}>"
         )
 
 # ================================
-# MIDNIGHT INDIA TASK
+# MIDNIGHT (IST) AUTO TASK
 # ================================
+
+async def seconds_until_ist_midnight():
+    now = datetime.now(IST)
+    next_midnight = (now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return (next_midnight - now).total_seconds()
 
 async def daily_cleanup_task():
     await client.wait_until_ready()
     channel = client.get_channel(AUTO_CHANNEL_ID)
 
     while not client.is_closed():
-        now = datetime.now(INDIA_TZ)
-        next_midnight = (now + timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        sleep_seconds = (next_midnight - now).total_seconds()
-
-        await asyncio.sleep(sleep_seconds)
+        wait_seconds = await seconds_until_ist_midnight()
+        await asyncio.sleep(wait_seconds)
 
         try:
             await cleanup_channel(channel)
         except Exception as e:
             print(f"Auto cleanup error: {e}")
+
+        await asyncio.sleep(60)  # safety buffer
 
 # ================================
 # EVENTS
@@ -122,7 +134,6 @@ async def daily_cleanup_task():
 async def on_ready():
     print(f"Logged in as {client.user}")
     await tree.sync(guild=discord.Object(id=GUILD_ID))
-    print("Slash commands synced")
     client.loop.create_task(daily_cleanup_task())
 
 @client.event
@@ -130,25 +141,21 @@ async def on_message(message):
     if message.author.id == client.user.id:
         return
 
-    # Countdown reactions for human messages
+    # Bot message deletion
     if (
-        message.channel.id == COUNTDOWN_CHANNEL_ID
-        and not message.author.bot
+        message.channel.id in ALLOWED_CHANNEL_IDS
+        and message.author.bot
+        and message.author.id in TARGET_BOT_IDS
     ):
-        asyncio.create_task(countdown_reactions(message))
-
-    # Bot message deletion logic (UNCHANGED)
-    if message.channel.id not in ALLOWED_CHANNEL_IDS:
-        return
-
-    if message.author.bot and message.author.id in TARGET_BOT_IDS:
         await asyncio.sleep(DELETE_AFTER)
         try:
             await message.delete()
-        except discord.NotFound:
+        except (discord.NotFound, discord.Forbidden):
             pass
-        except discord.Forbidden:
-            print("Missing permissions to delete message")
+
+    # Reaction countdown for human messages
+    if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
+        client.loop.create_task(reaction_countdown(message))
 
 # ================================
 # SLASH COMMAND
@@ -163,7 +170,7 @@ async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await cleanup_channel(interaction.channel)
     await interaction.followup.send(
-        "✅ Daily cleanup done. Count posted in log channel.",
+        "✅ Daily cleanup complete. Result posted in log channel.",
         ephemeral=True
     )
 
