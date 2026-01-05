@@ -63,6 +63,9 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
+# 🔐 store last win message per user
+last_win_message = {}
+
 # ================================
 # HELPERS
 # ================================
@@ -108,7 +111,6 @@ async def seconds_until_ist_midnight():
 
 
 async def count_live_messages(channel, user):
-    """Counts ALL existing messages by user in the channel"""
     count = 0
     async for msg in channel.history(limit=None):
         if msg.author.id == user.id and not msg.author.bot:
@@ -160,7 +162,7 @@ async def on_message(message):
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
 
-    # 🏆 WINS COUNTER (FIXED)
+    # 🏆 WINS COUNTER (WITH DELETE PREVIOUS)
     if (
         message.channel.id == WINS_SOURCE_CHANNEL_ID
         and not message.author.bot
@@ -169,10 +171,23 @@ async def on_message(message):
 
         if total > 0 and total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
-            if announce:
-                await announce.send(
-                    f"{message.author.mention} wins done so far ({total})"
-                )
+            if not announce:
+                return
+
+            # delete previous win message for this user
+            old_msg = last_win_message.get(message.author.id)
+            if old_msg:
+                try:
+                    await old_msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+
+            # send new one
+            new_msg = await announce.send(
+                f"{message.author.mention} wins done so far ({total})"
+            )
+
+            last_win_message[message.author.id] = new_msg
 
 
 @client.event
