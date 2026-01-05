@@ -236,8 +236,7 @@ async def daily_count(interaction: discord.Interaction):
     if log:
         await log.send(
             f"🧹 **Manual Daily Cleanup**\n"
-            f"📍 <#{interaction.channel.id}>\n"
-            f"🗑️ Deleted: **{deleted}** messages"
+            f"🏆 todays win **{deleted}** in <#{channel_id}>"
         )
 
     await interaction.followup.send(
@@ -250,3 +249,4 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
