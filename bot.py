@@ -9,7 +9,7 @@ import pytz
 # CONFIG
 # ================================
 
-DELETE_AFTER = 225  # seconds
+DELETE_AFTER = 225
 
 ALLOWED_CHANNEL_IDS = {
     1442370325831487608,
@@ -24,22 +24,27 @@ TARGET_BOT_IDS = {
 GUILD_ID = 1442370324858667041
 AUTO_CHANNEL_ID = 1442370325831487608
 
-# Reaction countdown config
+# Reaction countdown
 REACTION_CHANNEL_ID = 1442370325831487608
 REACTION_INTERVAL = 10
 REACTION_DURATION = 240
 REACTIONS = [
     "⚪","⚪","⚪","⚪","⚪",
     "🟢","🟢","🟢","🟢","🟢","🟢",
-    "🟡","🟡","🟡","🟡","🟡","🔴",
-    "🔴","🔴","🚨","🚨","🚨",
+    "🟡","🟡","🟡","🟡","🟡",
+    "🔴","🔴","🔴",
+    "🚨","🚨","🚨",
     "🚫","🚫"
 ]
 
-# 🔥 Custom emoji mass delete config
+# 🔥 Custom emoji mass delete
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709  # LL emoji ID
-REACTION_THRESHOLD = 4  # MORE THAN 5 PEOPLE
+REACTION_THRESHOLD = 4  # delete when count >= 4
+
+# 🏆 Wins system
+WINS_SOURCE_CHANNEL_ID = 1442370325831487608
+WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -48,8 +53,8 @@ IST = pytz.timezone("Asia/Kolkata")
 # ================================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-if TOKEN is None:
-    raise RuntimeError("DISCORD_TOKEN environment variable is not set")
+if not TOKEN:
+    raise RuntimeError("DISCORD_TOKEN not set")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -59,52 +64,40 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 # ================================
-# REACTION COUNTDOWN
+# HELPERS
 # ================================
 
 async def reaction_countdown(message: discord.Message):
-    if message.author.bot:
-        return
-
     steps = REACTION_DURATION // REACTION_INTERVAL
-    last_reaction = None
+    last = None
 
     for i in range(steps):
         try:
-            if last_reaction:
-                await message.remove_reaction(last_reaction, client.user)
+            if last:
+                await message.remove_reaction(last, client.user)
 
-            reaction = REACTIONS[i % len(REACTIONS)]
-            await message.add_reaction(reaction)
-            last_reaction = reaction
+            emoji = REACTIONS[i % len(REACTIONS)]
+            await message.add_reaction(emoji)
+            last = emoji
 
             await asyncio.sleep(REACTION_INTERVAL)
-
         except (discord.NotFound, discord.Forbidden):
             break
 
-# ================================
-# DAILY CLEANUP
-# ================================
 
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24, minutes=30)
 
-    async for message in channel.history(limit=None):
-        if message.author.bot:
-            continue
-        if message.created_at < cutoff:
+    async for msg in channel.history(limit=None):
+        if msg.author.bot or msg.created_at < cutoff:
             continue
         try:
-            await message.delete()
+            await msg.delete()
             await asyncio.sleep(0.4)
         except (discord.NotFound, discord.Forbidden):
             pass
 
-# ================================
-# MIDNIGHT IST TASK
-# ================================
 
 async def seconds_until_ist_midnight():
     now = datetime.now(IST)
@@ -112,6 +105,22 @@ async def seconds_until_ist_midnight():
         hour=0, minute=0, second=0, microsecond=0
     )
     return (next_midnight - now).total_seconds()
+
+
+async def count_user_messages_today(channel, user):
+    now = datetime.now(IST)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_utc = start.astimezone(timezone.utc)
+
+    count = 0
+    async for msg in channel.history(after=start_utc):
+        if msg.author.id == user.id and not msg.author.bot:
+            count += 1
+    return count
+
+# ================================
+# BACKGROUND TASK
+# ================================
 
 async def daily_cleanup_task():
     await client.wait_until_ready()
@@ -132,6 +141,7 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
 
+
 @client.event
 async def on_message(message):
     if message.author.id == client.user.id:
@@ -149,41 +159,43 @@ async def on_message(message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    # Reaction countdown for humans
+    # Reaction countdown
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
 
-# ================================
-# 🔥 CUSTOM EMOJI MASS DELETE (FIXED)
-# ================================
+    # 🏆 Wins counter
+    if (
+        message.channel.id == WINS_SOURCE_CHANNEL_ID
+        and not message.author.bot
+    ):
+        total = await count_user_messages_today(message.channel, message.author)
+
+        if total > 0 and total % 10 == 0:
+            announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
+            if announce:
+                await announce.send(
+                    f"{message.author.mention} wins done today so far ({total})"
+                )
+
 
 @client.event
 async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
     try:
-        message = reaction.message
+        msg = reaction.message
 
         if user.bot:
             return
-
-        # ONLY target channel
-        if message.channel.id != REACTION_CHANNEL_ID:
+        if msg.channel.id != REACTION_CHANNEL_ID:
             return
-
-        # ONLY target user
-        if message.author.id != TARGET_USER_ID:
+        if msg.author.id != TARGET_USER_ID:
             return
-
-        # ONLY custom emoji
         if not isinstance(reaction.emoji, discord.Emoji):
             return
-
-        # ONLY LL emoji
         if reaction.emoji.id != TARGET_EMOJI_ID:
             return
 
-        # DELETE when threshold reached
         if reaction.count >= REACTION_THRESHOLD:
-            await message.delete()
+            await msg.delete()
 
     except (discord.NotFound, discord.Forbidden):
         pass
@@ -200,12 +212,12 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await cleanup_channel(interaction.channel)
-    await interaction.followup.send("✅ Daily cleanup complete.", ephemeral=True)
+    await interaction.followup.send(
+        "✅ Daily cleanup complete.", ephemeral=True
+    )
 
 # ================================
-# RUN BOT
+# RUN
 # ================================
 
 client.run(TOKEN)
-
-
