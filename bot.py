@@ -3,6 +3,7 @@ import asyncio
 import os
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
+import pytz
 
 # ================================
 # CONFIG
@@ -20,9 +21,13 @@ TARGET_BOT_IDS = {
     628400349979344919
 }
 
+COUNTDOWN_CHANNEL_ID = 1442370325831487608
+
 LOG_CHANNEL_ID = 1443852961502466090
 GUILD_ID = 1442370324858667041
 AUTO_CHANNEL_ID = 1442370326460895246
+
+INDIA_TZ = pytz.timezone("Asia/Kolkata")
 
 # ================================
 # BOT SETUP
@@ -39,22 +44,28 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 # ================================
-# TIME HELPERS (IST MIDNIGHT)
+# COUNTDOWN REACTIONS
 # ================================
 
-def seconds_until_ist_midnight():
-    now_utc = datetime.now(timezone.utc)
-    ist = timezone(timedelta(hours=5, minutes=30))
-    now_ist = now_utc.astimezone(ist)
+async def countdown_reactions(message):
+    try:
+        reactions = [
+            "⏳",
+            "🕒","🕒","🕒","🕒",
+            "🟡","🟡","🟡","🟡",
+            "🔴","🔴","🔴","🔴",
+            "3️⃣","2️⃣","1️⃣","🗑️"
+        ]
 
-    next_midnight_ist = (now_ist + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+        for emoji in reactions:
+            await message.add_reaction(emoji)
+            await asyncio.sleep(15)
 
-    return (next_midnight_ist - now_ist).total_seconds()
+    except:
+        pass
 
 # ================================
-# CLEANUP LOGIC
+# DAILY CLEANUP FUNCTION
 # ================================
 
 async def cleanup_channel(channel):
@@ -78,11 +89,11 @@ async def cleanup_channel(channel):
     if log_channel:
         await log_channel.send(
             f"🧹 **Daily Cleanup Complete**\n"
-            f"🏆 **todays win `{deleted_count}`** in <#{channel.id}>"
+            f"🏆 todays win **{deleted_count}** in <#{channel.id}>"
         )
 
 # ================================
-# BACKGROUND TASK (IST MIDNIGHT)
+# MIDNIGHT INDIA TASK
 # ================================
 
 async def daily_cleanup_task():
@@ -90,19 +101,18 @@ async def daily_cleanup_task():
     channel = client.get_channel(AUTO_CHANNEL_ID)
 
     while not client.is_closed():
+        now = datetime.now(INDIA_TZ)
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        sleep_seconds = (next_midnight - now).total_seconds()
+
+        await asyncio.sleep(sleep_seconds)
+
         try:
-            seconds = seconds_until_ist_midnight()
-            print(f"Next cleanup in {seconds/3600:.2f} hours (IST midnight)")
-            await asyncio.sleep(seconds)
-
             await cleanup_channel(channel)
-
-            # prevent double run
-            await asyncio.sleep(60)
-
         except Exception as e:
             print(f"Auto cleanup error: {e}")
-            await asyncio.sleep(60)
 
 # ================================
 # EVENTS
@@ -111,9 +121,8 @@ async def daily_cleanup_task():
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user}")
-    guild = discord.Object(id=GUILD_ID)
-    await tree.sync(guild=guild)
-    print(f"Slash commands synced to guild {GUILD_ID}")
+    await tree.sync(guild=discord.Object(id=GUILD_ID))
+    print("Slash commands synced")
     client.loop.create_task(daily_cleanup_task())
 
 @client.event
@@ -121,6 +130,14 @@ async def on_message(message):
     if message.author.id == client.user.id:
         return
 
+    # Countdown reactions for human messages
+    if (
+        message.channel.id == COUNTDOWN_CHANNEL_ID
+        and not message.author.bot
+    ):
+        asyncio.create_task(countdown_reactions(message))
+
+    # Bot message deletion logic (UNCHANGED)
     if message.channel.id not in ALLOWED_CHANNEL_IDS:
         return
 
@@ -131,7 +148,7 @@ async def on_message(message):
         except discord.NotFound:
             pass
         except discord.Forbidden:
-            print(f"Missing permissions in {message.channel.id}")
+            print("Missing permissions to delete message")
 
 # ================================
 # SLASH COMMAND
@@ -146,7 +163,7 @@ async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await cleanup_channel(interaction.channel)
     await interaction.followup.send(
-        "✅ Daily cleanup done. Total posted in log channel.",
+        "✅ Daily cleanup done. Count posted in log channel.",
         ephemeral=True
     )
 
