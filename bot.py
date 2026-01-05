@@ -29,7 +29,12 @@ AUTO_CHANNEL_ID = 1442370326460895246
 REACTION_CHANNEL_ID = 1442370325831487608
 REACTION_INTERVAL = 10
 REACTION_DURATION = 240
-REACTIONS = ["🟢","🟢","🟢","🟢","🟢","🟡", "🟡","🟡","🟡", "🟡", "🟡", "🟡", "🔴", "🔴", "🔴", "🔴", "🔴","🔴","🔴", "🚨","🚨","🚨","🚫","🚫"]
+REACTIONS = ["🟢","🟢","🟢","🟢","🟢","🟡","🟡","🟡","🟡","🟡","🟡","🟡","🔴","🔴","🔴","🔴","🔴","🔴","🔴","🚨","🚨","🚨","🚫","🚫"]
+
+# Custom emoji deletion config
+TARGET_USER_ID = 906546198754775082
+TARGET_EMOJI_ID = 1444022259789467709  # <-- PUT YOUR EMOJI ID HERE
+REACTION_THRESHOLD = 3
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -43,6 +48,7 @@ if TOKEN is None:
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.reactions = True
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
@@ -73,13 +79,12 @@ async def reaction_countdown(message: discord.Message):
             break
 
 # ================================
-# DAILY CLEANUP FUNCTION
+# DAILY CLEANUP
 # ================================
 
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24, minutes=30)
-    deleted_count = 0
 
     async for message in channel.history(limit=None):
         if message.author.bot:
@@ -88,20 +93,12 @@ async def cleanup_channel(channel):
             continue
         try:
             await message.delete()
-            deleted_count += 1
             await asyncio.sleep(0.4)
         except (discord.NotFound, discord.Forbidden):
-            continue
-
-    log_channel = client.get_channel(LOG_CHANNEL_ID)
-    if log_channel:
-        await log_channel.send(
-            f"🧹 **Daily Cleanup Complete**\n"
-            f"🏆 **{deleted_count} messages deleted** in <#{channel.id}>"
-        )
+            pass
 
 # ================================
-# MIDNIGHT (IST) AUTO TASK
+# MIDNIGHT IST TASK
 # ================================
 
 async def seconds_until_ist_midnight():
@@ -116,15 +113,9 @@ async def daily_cleanup_task():
     channel = client.get_channel(AUTO_CHANNEL_ID)
 
     while not client.is_closed():
-        wait_seconds = await seconds_until_ist_midnight()
-        await asyncio.sleep(wait_seconds)
-
-        try:
-            await cleanup_channel(channel)
-        except Exception as e:
-            print(f"Auto cleanup error: {e}")
-
-        await asyncio.sleep(60)  # safety buffer
+        await asyncio.sleep(await seconds_until_ist_midnight())
+        await cleanup_channel(channel)
+        await asyncio.sleep(60)
 
 # ================================
 # EVENTS
@@ -153,9 +144,38 @@ async def on_message(message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    # Reaction countdown for human messages
+    # Reaction countdown
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
+
+# ================================
+# CUSTOM EMOJI MASS DELETE
+# ================================
+
+@client.event
+async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+    try:
+        message = reaction.message
+
+        if user.bot:
+            return
+
+        if message.author.id != TARGET_USER_ID:
+            return
+
+        if not reaction.custom_emoji:
+            return
+
+        if reaction.emoji.id != TARGET_EMOJI_ID:
+            return
+
+        users = [u async for u in reaction.users() if not u.bot]
+
+        if len(users) > REACTION_THRESHOLD:
+            await message.delete()
+
+    except (discord.NotFound, discord.Forbidden):
+        pass
 
 # ================================
 # SLASH COMMAND
@@ -163,25 +183,16 @@ async def on_message(message):
 
 @tree.command(
     name="daily_count",
-    description="Delete human messages under 24h30m and log count",
+    description="Delete human messages under 24h30m",
     guild=discord.Object(id=GUILD_ID)
 )
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await cleanup_channel(interaction.channel)
-    await interaction.followup.send(
-        "✅ Daily cleanup complete. Result posted in log channel.",
-        ephemeral=True
-    )
+    await interaction.followup.send("✅ Daily cleanup complete.", ephemeral=True)
 
 # ================================
 # RUN BOT
 # ================================
 
 client.run(TOKEN)
-
-
-
-
-
-
