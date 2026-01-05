@@ -64,7 +64,8 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-last_win_message = {}
+# store last win message per user
+last_win_message: dict[int, discord.Message] = {}
 
 # ================================
 # HELPERS
@@ -113,6 +114,14 @@ async def seconds_until_ist_midnight():
     )
     return (next_midnight - now).total_seconds()
 
+
+async def count_live_messages(channel: discord.TextChannel, user: discord.Member):
+    count = 0
+    async for msg in channel.history(limit=None):
+        if msg.author.id == user.id and not msg.author.bot:
+            count += 1
+    return count
+
 # ================================
 # BACKGROUND TASK
 # ================================
@@ -147,13 +156,13 @@ async def on_ready():
 
 
 @client.event
-async def on_message(message):
-    if message.author.id == client.user.id:
+async def on_message(message: discord.Message):
+    if message.author.bot:
         return
 
+    # Delete specific bot messages
     if (
         message.channel.id in ALLOWED_CHANNEL_IDS
-        and message.author.bot
         and message.author.id in TARGET_BOT_IDS
     ):
         await asyncio.sleep(DELETE_AFTER)
@@ -162,8 +171,32 @@ async def on_message(message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
+    # Reaction countdown
+    if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
+
+    # ========================
+    # WINS SYSTEM
+    # ========================
+    if message.channel.id == WINS_SOURCE_CHANNEL_ID:
+        total = await count_live_messages(message.channel, message.author)
+
+        if total > 0 and total % 10 == 0:
+            announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
+            if not announce:
+                return
+
+            old = last_win_message.get(message.author.id)
+            if old:
+                try:
+                    await old.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+
+            new_msg = await announce.send(
+                f"{message.author.mention} **wins done today so far ({total})**"
+            )
+            last_win_message[message.author.id] = new_msg
 
 
 @client.event
