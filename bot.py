@@ -39,10 +39,10 @@ REACTIONS = [
 
 # 🔥 Custom emoji mass delete
 TARGET_USER_ID = 906546198754775082
-TARGET_EMOJI_ID = 1444022259789467709  # LL emoji ID
-REACTION_THRESHOLD = 4  # delete when count >= 4
+TARGET_EMOJI_ID = 1444022259789467709
+REACTION_THRESHOLD = 4
 
-# 🏆 Wins system
+# 🏆 WINS SYSTEM
 WINS_SOURCE_CHANNEL_ID = 1442370325831487608
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
@@ -107,13 +107,10 @@ async def seconds_until_ist_midnight():
     return (next_midnight - now).total_seconds()
 
 
-async def count_user_messages_today(channel, user):
-    now = datetime.now(IST)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    start_utc = start.astimezone(timezone.utc)
-
+async def count_live_messages(channel, user):
+    """Counts ALL existing messages by user in the channel"""
     count = 0
-    async for msg in channel.history(after=start_utc):
+    async for msg in channel.history(limit=None):
         if msg.author.id == user.id and not msg.author.bot:
             count += 1
     return count
@@ -163,18 +160,18 @@ async def on_message(message):
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
 
-    # 🏆 Wins counter
+    # 🏆 WINS COUNTER (FIXED)
     if (
         message.channel.id == WINS_SOURCE_CHANNEL_ID
         and not message.author.bot
     ):
-        total = await count_user_messages_today(message.channel, message.author)
+        total = await count_live_messages(message.channel, message.author)
 
         if total > 0 and total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
             if announce:
                 await announce.send(
-                    f"{message.author.mention} wins done today so far ({total})"
+                    f"{message.author.mention} wins done so far ({total})"
                 )
 
 
@@ -212,9 +209,7 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await cleanup_channel(interaction.channel)
-    await interaction.followup.send(
-        "✅ Daily cleanup complete.", ephemeral=True
-    )
+    await interaction.followup.send("✅ Daily cleanup complete.", ephemeral=True)
 
 # ================================
 # RUN
