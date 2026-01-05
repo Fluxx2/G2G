@@ -29,7 +29,7 @@ AUTO_CHANNEL_ID = 1442370326460895246
 REACTION_CHANNEL_ID = 1442370325831487608
 REACTION_INTERVAL = 15
 REACTION_DURATION = 240
-REACTIONS = ["⏳", "⌛", "🕒", "⏰"]
+REACTIONS = ["🟢", "🟡", "🔴", "1️⃣5️⃣","⛔"]
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -179,3 +179,4 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
