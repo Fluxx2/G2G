@@ -21,20 +21,25 @@ TARGET_BOT_IDS = {
     628400349979344919
 }
 
-LOG_CHANNEL_ID = 1443852961502466090
 GUILD_ID = 1442370324858667041
-AUTO_CHANNEL_ID = 1442370326460895246
+AUTO_CHANNEL_ID = 1442370325831487608
 
 # Reaction countdown config
 REACTION_CHANNEL_ID = 1442370325831487608
 REACTION_INTERVAL = 10
 REACTION_DURATION = 240
-REACTIONS = ["🟢","🟢","🟢","🟢","🟢","🟡","🟡","🟡","🟡","🟡","🟡","🟡","🔴","🔴","🔴","🔴","🔴","🔴","🔴","🚨","🚨","🚨","🚫","🚫"]
+REACTIONS = [
+    "🟢","🟢","🟢","🟢","🟢",
+    "🟡","🟡","🟡","🟡","🟡","🟡","🟡",
+    "🔴","🔴","🔴","🔴","🔴","🔴","🔴",
+    "🚨","🚨","🚨",
+    "🚫","🚫"
+]
 
-# Custom emoji deletion config
+# 🔥 Custom emoji mass delete config
 TARGET_USER_ID = 906546198754775082
-TARGET_EMOJI_ID = 1444022259789467709  # <-- PUT YOUR EMOJI ID HERE
-REACTION_THRESHOLD = 3
+TARGET_EMOJI_ID = 1444022259789467709  # LL emoji ID
+REACTION_THRESHOLD = 6  # MORE THAN 5 PEOPLE
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -132,7 +137,7 @@ async def on_message(message):
     if message.author.id == client.user.id:
         return
 
-    # Bot message deletion
+    # Delete specific bot messages
     if (
         message.channel.id in ALLOWED_CHANNEL_IDS
         and message.author.bot
@@ -144,12 +149,12 @@ async def on_message(message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    # Reaction countdown
+    # Reaction countdown for humans
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
 
 # ================================
-# CUSTOM EMOJI MASS DELETE
+# 🔥 CUSTOM EMOJI MASS DELETE (FIXED)
 # ================================
 
 @client.event
@@ -160,18 +165,24 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
         if user.bot:
             return
 
+        # ONLY target channel
+        if message.channel.id != REACTION_CHANNEL_ID:
+            return
+
+        # ONLY target user
         if message.author.id != TARGET_USER_ID:
             return
 
-        if not reaction.custom_emoji:
+        # ONLY custom emoji
+        if not isinstance(reaction.emoji, discord.Emoji):
             return
 
+        # ONLY LL emoji
         if reaction.emoji.id != TARGET_EMOJI_ID:
             return
 
-        users = [u async for u in reaction.users() if not u.bot]
-
-        if len(users) > REACTION_THRESHOLD:
+        # DELETE when threshold reached
+        if reaction.count >= REACTION_THRESHOLD:
             await message.delete()
 
     except (discord.NotFound, discord.Forbidden):
