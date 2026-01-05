@@ -23,6 +23,7 @@ TARGET_BOT_IDS = {
 
 GUILD_ID = 1442370324858667041
 AUTO_CHANNEL_ID = 1442370325831487608
+LOG_CHANNEL_ID = 1443852961502466090
 
 # Reaction countdown
 REACTION_CHANNEL_ID = 1442370325831487608
@@ -37,12 +38,12 @@ REACTIONS = [
     "🚫","🚫"
 ]
 
-# 🔥 Custom emoji mass delete
+# Custom emoji mass delete
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
-# 🏆 WINS SYSTEM
+# Wins system
 WINS_SOURCE_CHANNEL_ID = 1442370325831487608
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
@@ -63,7 +64,6 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# 🔐 store last win message per user
 last_win_message = {}
 
 # ================================
@@ -91,15 +91,19 @@ async def reaction_countdown(message: discord.Message):
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24, minutes=30)
+    deleted = 0
 
     async for msg in channel.history(limit=None):
         if msg.author.bot or msg.created_at < cutoff:
             continue
         try:
             await msg.delete()
+            deleted += 1
             await asyncio.sleep(0.4)
         except (discord.NotFound, discord.Forbidden):
             pass
+
+    return deleted
 
 
 async def seconds_until_ist_midnight():
@@ -127,7 +131,15 @@ async def daily_cleanup_task():
 
     while not client.is_closed():
         await asyncio.sleep(await seconds_until_ist_midnight())
-        await cleanup_channel(channel)
+        deleted = await cleanup_channel(channel)
+
+        log = client.get_channel(LOG_CHANNEL_ID)
+        if log:
+            await log.send(
+                f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
+                f"🏆 todays win **{deleted}** in <#{channel_id}>"
+            )
+
         await asyncio.sleep(60)
 
 # ================================
@@ -162,11 +174,8 @@ async def on_message(message):
     if message.channel.id == REACTION_CHANNEL_ID and not message.author.bot:
         client.loop.create_task(reaction_countdown(message))
 
-    # 🏆 WINS COUNTER (WITH DELETE PREVIOUS)
-    if (
-        message.channel.id == WINS_SOURCE_CHANNEL_ID
-        and not message.author.bot
-    ):
+    # Wins system
+    if message.channel.id == WINS_SOURCE_CHANNEL_ID and not message.author.bot:
         total = await count_live_messages(message.channel, message.author)
 
         if total > 0 and total % 10 == 0:
@@ -174,20 +183,17 @@ async def on_message(message):
             if not announce:
                 return
 
-            # delete previous win message for this user
-            old_msg = last_win_message.get(message.author.id)
-            if old_msg:
+            old = last_win_message.get(message.author.id)
+            if old:
                 try:
-                    await old_msg.delete()
+                    await old.delete()
                 except (discord.NotFound, discord.Forbidden):
                     pass
 
-            # send new one
-            new_msg = await announce.send(
-                f"{message.author.mention} wins done so far ({total})"
+            new = await announce.send(
+                f"{message.author.mention} wins done today so far ({total})"
             )
-
-            last_win_message[message.author.id] = new_msg
+            last_win_message[message.author.id] = new
 
 
 @client.event
@@ -223,8 +229,21 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
 )
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    await cleanup_channel(interaction.channel)
-    await interaction.followup.send("✅ Daily cleanup complete.", ephemeral=True)
+
+    deleted = await cleanup_channel(interaction.channel)
+
+    log = client.get_channel(LOG_CHANNEL_ID)
+    if log:
+        await log.send(
+            f"🧹 **Manual Daily Cleanup**\n"
+            f"📍 <#{interaction.channel.id}>\n"
+            f"🗑️ Deleted: **{deleted}** messages"
+        )
+
+    await interaction.followup.send(
+        f"🏆 todays win **{deleted}** in <#{channel_id}>",
+        ephemeral=True
+    )
 
 # ================================
 # RUN
