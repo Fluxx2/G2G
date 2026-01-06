@@ -54,10 +54,6 @@ REACTION_THRESHOLD = 4
 WINS_SOURCE_CHANNEL_ID = 1442370325831487608
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
-# Code countdown
-CODE_COUNTDOWN_SECONDS = 240
-CODE_COUNTDOWN_INTERVAL = 10
-
 IST = pytz.timezone("Asia/Kolkata")
 
 # ================================
@@ -77,6 +73,7 @@ tree = app_commands.CommandTree(client)
 
 last_win_message: dict[int, discord.Message] = {}
 
+# ✅ FIX: store mirrored bot messages correctly
 # { source_message_id: { channel_id: bot_message } }
 mirrored_messages: dict[int, dict[int, discord.Message]] = {}
 
@@ -92,28 +89,29 @@ async def reaction_countdown(message: discord.Message):
         try:
             if last:
                 await message.remove_reaction(last, client.user)
+
             emoji = REACTIONS[i % len(REACTIONS)]
             await message.add_reaction(emoji)
             last = emoji
+
             await asyncio.sleep(REACTION_INTERVAL)
-        except:
+        except (discord.NotFound, discord.Forbidden):
             break
 
 
-# ✅ FIX: oldest-first deletion
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24, minutes=30)
     deleted = 0
 
-    async for msg in channel.history(limit=None, oldest_first=True):
+    async for msg in channel.history(limit=None):
         if msg.author.bot or msg.created_at < cutoff:
             continue
         try:
             await msg.delete()
             deleted += 1
             await asyncio.sleep(0.4)
-        except:
+        except (discord.NotFound, discord.Forbidden):
             pass
 
     return deleted
@@ -134,30 +132,6 @@ async def count_live_messages(channel, user):
             count += 1
     return count
 
-
-# ✅ NEW: live countdown editor
-async def run_code_countdown(source_message_id: int):
-    remaining = CODE_COUNTDOWN_SECONDS
-
-    while remaining >= 0:
-        mirrored = mirrored_messages.get(source_message_id)
-        if not mirrored:
-            return
-
-        mins = remaining // 60
-        secs = remaining % 60
-        timer = f"{mins:02d}:{secs:02d}"
-
-        for msg in mirrored.values():
-            try:
-                base = msg.content.split("⏳")[0].rstrip()
-                await msg.edit(content=f"{base} ⏳ {timer}")
-            except:
-                pass
-
-        await asyncio.sleep(CODE_COUNTDOWN_INTERVAL)
-        remaining -= CODE_COUNTDOWN_INTERVAL
-
 # ================================
 # BACKGROUND TASK
 # ================================
@@ -168,7 +142,15 @@ async def daily_cleanup_task():
 
     while not client.is_closed():
         await asyncio.sleep(await seconds_until_ist_midnight())
-        await cleanup_channel(channel)
+        deleted = await cleanup_channel(channel)
+
+        log = client.get_channel(LOG_CHANNEL_ID)
+        if log:
+            await log.send(
+                f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
+                f"**🏆 todays win `{deleted}`** in <#{channel.id}>"
+            )
+
         await asyncio.sleep(60)
 
 # ================================
@@ -185,6 +167,7 @@ async def on_ready():
 @client.event
 async def on_message(message: discord.Message):
 
+    # ✅ FIX: targeted bot deletion works in BOTH channels
     if (
         message.author.bot
         and message.channel.id in ALLOWED_CHANNEL_IDS
@@ -193,19 +176,21 @@ async def on_message(message: discord.Message):
         await asyncio.sleep(DELETE_AFTER)
         try:
             await message.delete()
-        except:
+        except (discord.NotFound, discord.Forbidden):
             pass
         return
 
     if message.author.bot:
         return
 
-    # CODE DETECTION & MIRROR + TIMER
+    # ========================
+    # CODE DETECTION & MIRROR
+    # ========================
     if message.channel.id == MIRROR_SOURCE_CHANNEL_ID:
         match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
         if match:
             code = match.group(0)
-            formatted = f"# `     {code}     ` ⏳ 04:00"
+            formatted = f"# `     {code}     `"
 
             mirrored_messages[message.id] = {}
 
@@ -215,24 +200,34 @@ async def on_message(message: discord.Message):
                     bot_msg = await channel.send(formatted)
                     mirrored_messages[message.id][channel_id] = bot_msg
 
-            client.loop.create_task(run_code_countdown(message.id))
-
+    # ========================
+    # REACTION COUNTDOWN
+    # ========================
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
 
+    # ========================
+    # WINS SYSTEM
+    # ========================
     if message.channel.id == WINS_SOURCE_CHANNEL_ID:
         total = await count_live_messages(message.channel, message.author)
+
         if total > 0 and total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
+            if not announce:
+                return
+
             old = last_win_message.get(message.author.id)
             if old:
                 try:
                     await old.delete()
-                except:
+                except (discord.NotFound, discord.Forbidden):
                     pass
-            last_win_message[message.author.id] = await announce.send(
+
+            new_msg = await announce.send(
                 f"{message.author.mention} **wins done today so far ({total})**"
             )
+            last_win_message[message.author.id] = new_msg
 
 
 @client.event
@@ -245,15 +240,13 @@ async def on_message_edit(before, after):
     if not match:
         return
 
-    formatted = f"# `     {match.group(0)}     ` ⏳ 04:00"
+    formatted = f"# `     {match.group(0)}     `"
 
     for msg in mirrored.values():
         try:
             await msg.edit(content=formatted)
-        except:
+        except (discord.NotFound, discord.Forbidden):
             pass
-
-    client.loop.create_task(run_code_countdown(after.id))
 
 
 @client.event
@@ -265,7 +258,7 @@ async def on_message_delete(message):
     for msg in mirrored.values():
         try:
             await msg.delete()
-        except:
+        except (discord.NotFound, discord.Forbidden):
             pass
 
 
@@ -273,16 +266,22 @@ async def on_message_delete(message):
 async def on_reaction_add(reaction, user):
     try:
         msg = reaction.message
-        if (
-            not user.bot
-            and msg.channel.id == REACTION_CHANNEL_ID
-            and msg.author.id == TARGET_USER_ID
-            and isinstance(reaction.emoji, discord.Emoji)
-            and reaction.emoji.id == TARGET_EMOJI_ID
-            and reaction.count >= REACTION_THRESHOLD
-        ):
+
+        if user.bot:
+            return
+        if msg.channel.id != REACTION_CHANNEL_ID:
+            return
+        if msg.author.id != TARGET_USER_ID:
+            return
+        if not isinstance(reaction.emoji, discord.Emoji):
+            return
+        if reaction.emoji.id != TARGET_EMOJI_ID:
+            return
+
+        if reaction.count >= REACTION_THRESHOLD:
             await msg.delete()
-    except:
+
+    except (discord.NotFound, discord.Forbidden):
         pass
 
 # ================================
@@ -296,7 +295,17 @@ async def on_reaction_add(reaction, user):
 )
 async def daily_count(interaction):
     await interaction.response.defer(ephemeral=True)
+
     deleted = await cleanup_channel(interaction.channel)
+
+    log = client.get_channel(LOG_CHANNEL_ID)
+    if log:
+        await log.send(
+            f"🧹 **Manual Daily Cleanup**\n"
+            f"📍 <#{interaction.channel.id}>\n"
+            f"🏆 todays win **{deleted}**"
+        )
+
     await interaction.followup.send(
         f"🏆 todays win **{deleted}**",
         ephemeral=True
