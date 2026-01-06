@@ -77,8 +77,15 @@ tree = app_commands.CommandTree(client)
 
 last_win_message: dict[int, discord.Message] = {}
 
-# { source_message_id: { channel_id: bot_message } }
+# mirrored messages
 mirrored_messages: dict[int, dict[int, discord.Message]] = {}
+
+# ================================
+# LIVE DAILY WINS
+# ================================
+
+daily_wins = 0
+live_wins_message: discord.Message | None = None
 
 # ================================
 # HELPERS
@@ -99,7 +106,6 @@ async def reaction_countdown(message: discord.Message):
             break
 
 
-# ✅ FIX: delete OLDEST first
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24, minutes=30)
@@ -134,7 +140,25 @@ async def count_live_messages(channel, user):
     return count
 
 
-# ✅ NEW: live code countdown
+async def update_live_wins():
+    global live_wins_message
+
+    channel = client.get_channel(LOG_CHANNEL_ID)
+    if not channel:
+        return
+
+    content = f"🏆 **Live Wins Today:** `{daily_wins}`"
+
+    if live_wins_message:
+        try:
+            await live_wins_message.edit(content=content)
+            return
+        except:
+            live_wins_message = None
+
+    live_wins_message = await channel.send(content)
+
+
 async def run_code_countdown(source_id: int):
     remaining = CODE_COUNTDOWN_SECONDS
 
@@ -162,12 +186,31 @@ async def run_code_countdown(source_id: int):
 # ================================
 
 async def daily_cleanup_task():
+    global daily_wins, live_wins_message
+
     await client.wait_until_ready()
     channel = client.get_channel(AUTO_CHANNEL_ID)
+    log = client.get_channel(LOG_CHANNEL_ID)
 
     while not client.is_closed():
         await asyncio.sleep(await seconds_until_ist_midnight())
-        await cleanup_channel(channel)
+
+        if live_wins_message:
+            try:
+                await live_wins_message.delete()
+            except:
+                pass
+            live_wins_message = None
+
+        deleted = await cleanup_channel(channel)
+
+        if log:
+            await log.send(
+                f"🌙 **Daily Cleanup Complete (IST Midnight)**\n"
+                f"**🏆 todays win `404` in** <#CHANNEL_ID>"
+            )
+
+        daily_wins = 0
         await asyncio.sleep(60)
 
 # ================================
@@ -199,9 +242,6 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    # ========================
-    # CODE DETECTION & MIRROR + TIMER
-    # ========================
     if message.channel.id == MIRROR_SOURCE_CHANNEL_ID:
         match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
         if match:
@@ -210,11 +250,11 @@ async def on_message(message: discord.Message):
 
             mirrored_messages[message.id] = {}
 
-            for channel_id in MIRROR_TARGET_CHANNEL_IDS:
-                channel = client.get_channel(channel_id)
-                if channel:
-                    bot_msg = await channel.send(formatted)
-                    mirrored_messages[message.id][channel_id] = bot_msg
+            for cid in MIRROR_TARGET_CHANNEL_IDS:
+                ch = client.get_channel(cid)
+                if ch:
+                    bot_msg = await ch.send(formatted)
+                    mirrored_messages[message.id][cid] = bot_msg
 
             client.loop.create_task(run_code_countdown(message.id))
 
@@ -222,6 +262,10 @@ async def on_message(message: discord.Message):
         client.loop.create_task(reaction_countdown(message))
 
     if message.channel.id == WINS_SOURCE_CHANNEL_ID:
+        global daily_wins
+        daily_wins += 1
+        await update_live_wins()
+
         total = await count_live_messages(message.channel, message.author)
         if total > 0 and total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
@@ -313,10 +357,8 @@ async def daily_count(interaction):
         ephemeral=True
     )
 
-
 # ================================
 # RUN
 # ================================
 
 client.run(TOKEN)
-
