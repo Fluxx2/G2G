@@ -10,6 +10,10 @@ import re
 # CONFIG
 # ================================
 
+CODE_COUNTDOWN_SECONDS = 240
+CODE_COUNTDOWN_INTERVAL = 10
+
+
 MIRROR_SOURCE_CHANNEL_ID = 1442370325831487608
 MIRROR_TARGET_CHANNEL_IDS = {
     1442370325831487608,
@@ -81,6 +85,31 @@ mirrored_messages: dict[int, dict[int, discord.Message]] = {}
 # HELPERS
 # ================================
 
+async def run_code_countdown(original_id: int):
+    remaining = CODE_COUNTDOWN_SECONDS
+
+    while remaining >= 0:
+        mirrored = mirrored_messages.get(original_id)
+        if not mirrored:
+            return
+
+        minutes = remaining // 60
+        seconds = remaining % 60
+        time_text = f"{minutes:02d}:{seconds:02d}"
+
+        for msg in mirrored.values():
+            try:
+                content = msg.content.split("⏳")[0].rstrip()
+                await msg.edit(content=f"{content} ⏳ {time_text}")
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+        await asyncio.sleep(CODE_COUNTDOWN_INTERVAL)
+        remaining -= CODE_COUNTDOWN_INTERVAL
+
+
+
+
 async def reaction_countdown(message: discord.Message):
     steps = REACTION_DURATION // REACTION_INTERVAL
     last = None
@@ -101,10 +130,11 @@ async def reaction_countdown(message: discord.Message):
 
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(hours=24, minutes=30)
+    cutoff = now - timedelta(hours=24, minutes=1)
     deleted = 0
 
-    async for msg in channel.history(limit=None):
+    # ✅ OLDEST → NEWEST deletion order
+    async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot or msg.created_at < cutoff:
             continue
         try:
@@ -115,7 +145,6 @@ async def cleanup_channel(channel):
             pass
 
     return deleted
-
 
 async def seconds_until_ist_midnight():
     now = datetime.now(IST)
@@ -186,19 +215,22 @@ async def on_message(message: discord.Message):
     # ========================
     # CODE DETECTION & MIRROR
     # ========================
-    if message.channel.id == MIRROR_SOURCE_CHANNEL_ID:
-        match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
-        if match:
-            code = match.group(0)
-            formatted = f"# `     {code}     `"
+if message.channel.id == MIRROR_SOURCE_CHANNEL_ID:
+    match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
+    if match:
+        code = match.group(0)
+        formatted = f"# `     {code}     ` ⏳ 04:00"
 
-            mirrored_messages[message.id] = {}
+        mirrored_messages[message.id] = {}
 
-            for channel_id in MIRROR_TARGET_CHANNEL_IDS:
-                channel = client.get_channel(channel_id)
-                if channel:
-                    bot_msg = await channel.send(formatted)
-                    mirrored_messages[message.id][channel_id] = bot_msg
+        for channel_id in MIRROR_TARGET_CHANNEL_IDS:
+            channel = client.get_channel(channel_id)
+            if channel:
+                bot_msg = await channel.send(formatted)
+                mirrored_messages[message.id][channel_id] = bot_msg
+
+        client.loop.create_task(run_code_countdown(message.id))
+
 
     # ========================
     # REACTION COUNTDOWN
@@ -231,22 +263,26 @@ async def on_message(message: discord.Message):
 
 
 @client.event
-async def on_message_edit(before, after):
-    mirrored = mirrored_messages.get(after.id)
-    if not mirrored:
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    if after.id not in mirrored_messages:
         return
 
     match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", after.content)
     if not match:
         return
 
-    formatted = f"# `     {match.group(0)}     `"
+    code = match.group(0)
+    formatted = f"# `     {code}     ` ⏳ 04:00"
 
-    for msg in mirrored.values():
+    for msg in mirrored_messages[after.id].values():
         try:
             await msg.edit(content=formatted)
         except (discord.NotFound, discord.Forbidden):
             pass
+
+    # 🔁 restart countdown
+    client.loop.create_task(run_code_countdown(after.id))
+
 
 
 @client.event
@@ -316,3 +352,4 @@ async def daily_count(interaction):
 # ================================
 
 client.run(TOKEN)
+
