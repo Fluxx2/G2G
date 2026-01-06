@@ -32,10 +32,10 @@ GUILD_ID = 1442370324858667041
 AUTO_CHANNEL_ID = 1442370325831487608
 LOG_CHANNEL_ID = 1443852961502466090
 
-# Reaction countdown
 REACTION_CHANNEL_ID = 1442370325831487608
 REACTION_INTERVAL = 10
 REACTION_DURATION = 240
+
 REACTIONS = [
     "⚪","⚪","⚪","⚪","⚪",
     "🟢","🟢","🟢","🟢","🟢","🟢",
@@ -45,16 +45,13 @@ REACTIONS = [
     "🚫","🚫"
 ]
 
-# Custom emoji mass delete
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
-# Wins system
 WINS_SOURCE_CHANNEL_ID = 1442370325831487608
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
-# Code countdown
 CODE_COUNTDOWN_SECONDS = 240
 CODE_COUNTDOWN_INTERVAL = 5
 
@@ -75,23 +72,18 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-last_win_message: dict[int, discord.Message] = {}
-
-# mirrored messages
-mirrored_messages: dict[int, dict[int, discord.Message]] = {}
-
-# ================================
-# LIVE DAILY WINS
-# ================================
+last_win_message = {}
+mirrored_messages = {}
+code_tasks = {}
 
 daily_wins = 0
-live_wins_message: discord.Message | None = None
+live_wins_message = None
 
 # ================================
 # HELPERS
 # ================================
 
-async def reaction_countdown(message: discord.Message):
+async def reaction_countdown(message):
     steps = REACTION_DURATION // REACTION_INTERVAL
     last = None
     for i in range(steps):
@@ -112,7 +104,9 @@ async def cleanup_channel(channel):
     deleted = 0
 
     async for msg in channel.history(limit=None, oldest_first=True):
-        if msg.author.bot or msg.created_at < cutoff:
+        if msg.author.bot:
+            continue
+        if msg.created_at > cutoff:
             continue
         try:
             await msg.delete()
@@ -142,7 +136,6 @@ async def count_live_messages(channel, user):
 
 async def update_live_wins():
     global live_wins_message
-
     channel = client.get_channel(LOG_CHANNEL_ID)
     if not channel:
         return
@@ -159,9 +152,8 @@ async def update_live_wins():
     live_wins_message = await channel.send(content)
 
 
-async def run_code_countdown(source_id: int):
+async def run_code_countdown(source_id):
     remaining = CODE_COUNTDOWN_SECONDS
-
     while remaining >= 0:
         mirrored = mirrored_messages.get(source_id)
         if not mirrored:
@@ -181,14 +173,15 @@ async def run_code_countdown(source_id: int):
         await asyncio.sleep(CODE_COUNTDOWN_INTERVAL)
         remaining -= CODE_COUNTDOWN_INTERVAL
 
+
 # ================================
 # BACKGROUND TASK
 # ================================
 
 async def daily_cleanup_task():
     global daily_wins, live_wins_message
-
     await client.wait_until_ready()
+
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
 
@@ -202,12 +195,12 @@ async def daily_cleanup_task():
                 pass
             live_wins_message = None
 
-        deleted = await cleanup_channel(channel)
+        await cleanup_channel(channel)
 
         if log:
             await log.send(
-                f"🌙 **Daily Cleanup Complete (IST Midnight)**\n"
-                f"**🏆 todays win `404` in** <#CHANNEL_ID>"
+                f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
+                f"**🏆 todays win `{daily_wins}` in** <#{AUTO_CHANNEL_ID}>"
             )
 
         daily_wins = 0
@@ -225,7 +218,7 @@ async def on_ready():
 
 
 @client.event
-async def on_message(message: discord.Message):
+async def on_message(message):
 
     if (
         message.author.bot
@@ -256,7 +249,12 @@ async def on_message(message: discord.Message):
                     bot_msg = await ch.send(formatted)
                     mirrored_messages[message.id][cid] = bot_msg
 
-            client.loop.create_task(run_code_countdown(message.id))
+            if message.id in code_tasks:
+                code_tasks[message.id].cancel()
+
+            code_tasks[message.id] = client.loop.create_task(
+                run_code_countdown(message.id)
+            )
 
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
@@ -298,7 +296,12 @@ async def on_message_edit(before, after):
         except:
             pass
 
-    client.loop.create_task(run_code_countdown(after.id))
+    if after.id in code_tasks:
+        code_tasks[after.id].cancel()
+
+    code_tasks[after.id] = client.loop.create_task(
+        run_code_countdown(after.id)
+    )
 
 
 @client.event
@@ -306,6 +309,10 @@ async def on_message_delete(message):
     mirrored = mirrored_messages.pop(message.id, None)
     if not mirrored:
         return
+
+    task = code_tasks.pop(message.id, None)
+    if task:
+        task.cancel()
 
     for msg in mirrored.values():
         try:
@@ -329,7 +336,6 @@ async def on_reaction_add(reaction, user):
             await msg.delete()
     except:
         pass
-
 # ================================
 # SLASH COMMAND
 # ================================
@@ -339,7 +345,7 @@ async def on_reaction_add(reaction, user):
     description="Delete human messages under 24h30m",
     guild=discord.Object(id=GUILD_ID)
 )
-async def daily_count(interaction):
+async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     deleted = await cleanup_channel(interaction.channel)
@@ -358,7 +364,13 @@ async def daily_count(interaction):
     )
 
 # ================================
-# RUN
+# RUN (SAFE)
 # ================================
 
-client.run(TOKEN)
+try:
+    client.run(TOKEN)
+except discord.HTTPException as e:
+    if e.status == 429:
+        print("Hit Discord global rate limit. Wait before restarting.")
+    else:
+        raise
