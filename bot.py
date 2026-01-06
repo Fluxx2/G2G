@@ -56,7 +56,7 @@ WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
 # Code countdown
 CODE_COUNTDOWN_SECONDS = 240
-CODE_COUNTDOWN_INTERVAL = 10
+CODE_COUNTDOWN_INTERVAL = 5
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -297,14 +297,26 @@ async def on_reaction_add(reaction, user):
 )
 async def daily_count(interaction):
     await interaction.response.defer(ephemeral=True)
+
     deleted = await cleanup_channel(interaction.channel)
+
+    log = client.get_channel(LOG_CHANNEL_ID)
+    if log:
+        await log.send(
+            f"🧹 **Manual Daily Cleanup**\n"
+            f"📍 <#{interaction.channel.id}>\n"
+            f"🏆 todays win **{deleted}**"
+        )
+
     await interaction.followup.send(
         f"🏆 todays win **{deleted}**",
         ephemeral=True
     )
+
 
 # ================================
 # RUN
 # ================================
 
 client.run(TOKEN)
+
