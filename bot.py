@@ -10,13 +10,11 @@ import re
 # CONFIG
 # ================================
 
-
 MIRROR_SOURCE_CHANNEL_ID = 1442370325831487608
 MIRROR_TARGET_CHANNEL_IDS = {
     1442370325831487608,
     1449692284596523068
 }
-
 
 DELETE_AFTER = 225
 
@@ -76,6 +74,10 @@ tree = app_commands.CommandTree(client)
 
 # store last win message per user
 last_win_message: dict[int, discord.Message] = {}
+
+# store mirrored messages
+# { original_message_id: { channel_id: bot_message } }
+mirrored_messages: dict[int, dict[int, discord.Message]] = {}
 
 # ================================
 # HELPERS
@@ -163,13 +165,32 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
 
-
+# ----------------- msg copy and send (ACTIVE on_message) -----------------
 @client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    # Delete specific bot messages
+    # ========================
+    # CODE DETECTION & MIRROR
+    # ========================
+    if message.channel.id == MIRROR_SOURCE_CHANNEL_ID:
+        match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
+        if match:
+            code = match.group(0)
+            formatted = f"# `     {code}     `"
+
+            mirrored_messages[message.id] = {}
+
+            for channel_id in MIRROR_TARGET_CHANNEL_IDS:
+                channel = client.get_channel(channel_id)
+                if channel:
+                    sent = await channel.send(formatted)
+                    mirrored_messages[message.id][channel_id] = sent
+
+    # ========================
+    # DELETE SPECIFIC BOT MSGS
+    # ========================
     if (
         message.channel.id in ALLOWED_CHANNEL_IDS
         and message.author.id in TARGET_BOT_IDS
@@ -180,7 +201,9 @@ async def on_message(message: discord.Message):
         except (discord.NotFound, discord.Forbidden):
             pass
 
-    # Reaction countdown
+    # ========================
+    # REACTION COUNTDOWN
+    # ========================
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
 
@@ -206,6 +229,37 @@ async def on_message(message: discord.Message):
                 f"{message.author.mention} **wins done today so far ({total})**"
             )
             last_win_message[message.author.id] = new_msg
+
+
+@client.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    if after.id not in mirrored_messages:
+        return
+
+    match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", after.content)
+    if not match:
+        return
+
+    formatted = f"# `     {match.group(0)}     `"
+
+    for msg in mirrored_messages[after.id].values():
+        try:
+            await msg.edit(content=formatted)
+        except (discord.NotFound, discord.Forbidden):
+            pass
+
+
+@client.event
+async def on_message_delete(message: discord.Message):
+    mirrored = mirrored_messages.pop(message.id, None)
+    if not mirrored:
+        return
+
+    for msg in mirrored.values():
+        try:
+            await msg.delete()
+        except (discord.NotFound, discord.Forbidden):
+            pass
 
 
 @client.event
@@ -257,76 +311,8 @@ async def daily_count(interaction: discord.Interaction):
         ephemeral=True
     )
 
-#-----------------msg copy and send----------------
-@client.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
-
-    # ========================
-    # CODE DETECTION & MIRROR
-    # ========================
-    if message.channel.id == MIRROR_SOURCE_CHANNEL_ID:
-        match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
-        if match:
-            code = match.group(0)
-            formatted = f"# `     {code}     `"
-
-            for channel_id in MIRROR_TARGET_CHANNEL_IDS:
-                channel = client.get_channel(channel_id)
-                if channel:
-                    await channel.send(formatted)
-
-    # ========================
-    # DELETE SPECIFIC BOT MSGS
-    # ========================
-    if (
-        message.channel.id in ALLOWED_CHANNEL_IDS
-        and message.author.id in TARGET_BOT_IDS
-    ):
-        await asyncio.sleep(DELETE_AFTER)
-        try:
-            await message.delete()
-        except (discord.NotFound, discord.Forbidden):
-            pass
-
-    # ========================
-    # REACTION COUNTDOWN
-    # ========================
-    if message.channel.id == REACTION_CHANNEL_ID:
-        client.loop.create_task(reaction_countdown(message))
-
-    # ========================
-    # WINS SYSTEM
-    # ========================
-    if message.channel.id == WINS_SOURCE_CHANNEL_ID:
-        total = await count_live_messages(message.channel, message.author)
-
-        if total > 0 and total % 10 == 0:
-            announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
-            if not announce:
-                return
-
-            old = last_win_message.get(message.author.id)
-            if old:
-                try:
-                    await old.delete()
-                except (discord.NotFound, discord.Forbidden):
-                    pass
-
-            new_msg = await announce.send(
-                f"{message.author.mention} **wins done today so far ({total})**"
-            )
-            last_win_message[message.author.id] = new_msg
-
-
-
 # ================================
 # RUN
 # ================================
 
 client.run(TOKEN)
-
-
-
-
