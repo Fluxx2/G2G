@@ -24,9 +24,9 @@ ALLOWED_CHANNEL_IDS = {
 }
 
 TARGET_BOT_IDS = {
-    1449623475588436039,
+    1457091181224661004,
     628400349979344919,
-    1457091181224661004
+    
 }
 
 GUILD_ID = 1442370324858667041
@@ -316,3 +316,4 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
