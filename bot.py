@@ -82,6 +82,17 @@ live_wins_message = None
 # ================================
 # HELPERS
 # ================================
+async def count_today_messages(channel: discord.TextChannel):
+    now = datetime.now(IST)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    count = 0
+    async for msg in channel.history(limit=None, after=start):
+        if not msg.author.bot:
+            count += 1
+
+    return count
+
 
 async def reaction_countdown(message):
     steps = REACTION_DURATION // REACTION_INTERVAL
@@ -135,10 +146,16 @@ async def count_live_messages(channel, user):
 
 
 async def update_live_wins():
-    global live_wins_message
-    channel = client.get_channel(LOG_CHANNEL_ID)
-    if not channel:
+    global live_wins_message, daily_wins
+
+    log_channel = client.get_channel(LOG_CHANNEL_ID)
+    source_channel = client.get_channel(WINS_SOURCE_CHANNEL_ID)
+
+    if not log_channel or not source_channel:
         return
+
+    # 🔹 recount before every update
+    daily_wins = await count_today_messages(source_channel)
 
     content = f"🏆 **Live Wins Today:** `{daily_wins}`"
 
@@ -149,7 +166,7 @@ async def update_live_wins():
         except:
             live_wins_message = None
 
-    live_wins_message = await channel.send(content)
+    live_wins_message = await log_channel.send(content)
 
 
 async def run_code_countdown(source_id):
@@ -261,7 +278,6 @@ async def on_message(message):
 
     if message.channel.id == WINS_SOURCE_CHANNEL_ID:
         global daily_wins
-        daily_wins += 1
         await update_live_wins()
 
         total = await count_live_messages(message.channel, message.author)
@@ -374,3 +390,4 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
