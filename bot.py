@@ -26,7 +26,6 @@ ALLOWED_CHANNEL_IDS = {
 TARGET_BOT_IDS = {
     1457091181224661004,
     628400349979344919,
-    
 }
 
 GUILD_ID = 1442370324858667041
@@ -72,11 +71,10 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# store last win message per user
 last_win_message: dict[int, discord.Message] = {}
 
-# store mirrored messages
-# { original_message_id: { channel_id: bot_message } }
+# ✅ FIX: store mirrored bot messages correctly
+# { source_message_id: { channel_id: bot_message } }
 mirrored_messages: dict[int, dict[int, discord.Message]] = {}
 
 # ================================
@@ -127,7 +125,7 @@ async def seconds_until_ist_midnight():
     return (next_midnight - now).total_seconds()
 
 
-async def count_live_messages(channel: discord.TextChannel, user: discord.Member):
+async def count_live_messages(channel, user):
     count = 0
     async for msg in channel.history(limit=None):
         if msg.author.id == user.id and not msg.author.bot:
@@ -150,7 +148,7 @@ async def daily_cleanup_task():
         if log:
             await log.send(
                 f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
-                f"**🏆 todays win `{deleted}`** in  <#{channel.id}>"
+                f"**🏆 todays win `{deleted}`** in <#{channel.id}>"
             )
 
         await asyncio.sleep(60)
@@ -165,14 +163,11 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
 
-# ----------------- msg copy and send (ACTIVE on_message) -----------------
 
 @client.event
 async def on_message(message: discord.Message):
 
-    # ========================
-    # DELETE SPECIFIC BOT MSGS (FIXED)
-    # ========================
+    # ✅ FIX: targeted bot deletion works in BOTH channels
     if (
         message.author.bot
         and message.channel.id in ALLOWED_CHANNEL_IDS
@@ -185,7 +180,6 @@ async def on_message(message: discord.Message):
             pass
         return
 
-    # ignore all other bots
     if message.author.bot:
         return
 
@@ -198,10 +192,13 @@ async def on_message(message: discord.Message):
             code = match.group(0)
             formatted = f"# `     {code}     `"
 
+            mirrored_messages[message.id] = {}
+
             for channel_id in MIRROR_TARGET_CHANNEL_IDS:
                 channel = client.get_channel(channel_id)
                 if channel:
-                    await channel.send(formatted)
+                    bot_msg = await channel.send(formatted)
+                    mirrored_messages[message.id][channel_id] = bot_msg
 
     # ========================
     # REACTION COUNTDOWN
@@ -234,8 +231,9 @@ async def on_message(message: discord.Message):
 
 
 @client.event
-async def on_message_edit(before: discord.Message, after: discord.Message):
-    if after.id not in mirrored_messages:
+async def on_message_edit(before, after):
+    mirrored = mirrored_messages.get(after.id)
+    if not mirrored:
         return
 
     match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", after.content)
@@ -244,7 +242,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
     formatted = f"# `     {match.group(0)}     `"
 
-    for msg in mirrored_messages[after.id].values():
+    for msg in mirrored.values():
         try:
             await msg.edit(content=formatted)
         except (discord.NotFound, discord.Forbidden):
@@ -252,7 +250,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
 
 @client.event
-async def on_message_delete(message: discord.Message):
+async def on_message_delete(message):
     mirrored = mirrored_messages.pop(message.id, None)
     if not mirrored:
         return
@@ -265,7 +263,7 @@ async def on_message_delete(message: discord.Message):
 
 
 @client.event
-async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+async def on_reaction_add(reaction, user):
     try:
         msg = reaction.message
 
@@ -295,7 +293,7 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
     description="Delete human messages under 24h30m",
     guild=discord.Object(id=GUILD_ID)
 )
-async def daily_count(interaction: discord.Interaction):
+async def daily_count(interaction):
     await interaction.response.defer(ephemeral=True)
 
     deleted = await cleanup_channel(interaction.channel)
@@ -318,5 +316,3 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
-
-
