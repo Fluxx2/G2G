@@ -166,8 +166,26 @@ async def on_ready():
     client.loop.create_task(daily_cleanup_task())
 
 # ----------------- msg copy and send (ACTIVE on_message) -----------------
+
 @client.event
 async def on_message(message: discord.Message):
+
+    # ========================
+    # DELETE SPECIFIC BOT MSGS (FIXED)
+    # ========================
+    if (
+        message.author.bot
+        and message.channel.id in ALLOWED_CHANNEL_IDS
+        and message.author.id in TARGET_BOT_IDS
+    ):
+        await asyncio.sleep(DELETE_AFTER)
+        try:
+            await message.delete()
+        except (discord.NotFound, discord.Forbidden):
+            pass
+        return
+
+    # ignore all other bots
     if message.author.bot:
         return
 
@@ -180,26 +198,10 @@ async def on_message(message: discord.Message):
             code = match.group(0)
             formatted = f"# `     {code}     `"
 
-            mirrored_messages[message.id] = {}
-
             for channel_id in MIRROR_TARGET_CHANNEL_IDS:
                 channel = client.get_channel(channel_id)
                 if channel:
-                    sent = await channel.send(formatted)
-                    mirrored_messages[message.id][channel_id] = sent
-
-    # ========================
-    # DELETE SPECIFIC BOT MSGS
-    # ========================
-    if (
-        message.channel.id in ALLOWED_CHANNEL_IDS
-        and message.author.id in TARGET_BOT_IDS
-    ):
-        await asyncio.sleep(DELETE_AFTER)
-        try:
-            await message.delete()
-        except (discord.NotFound, discord.Forbidden):
-            pass
+                    await channel.send(formatted)
 
     # ========================
     # REACTION COUNTDOWN
@@ -316,4 +318,5 @@ async def daily_count(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
 
