@@ -54,11 +54,16 @@ live_total_message = None
 # ================================
 # HELPERS
 # ================================
-async def count_today_messages(channel):
-    now = datetime.now(IST)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+def ist_midnight_utc():
+    now_ist = datetime.now(IST)
+    midnight_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight_ist.astimezone(timezone.utc)
 
+
+async def count_today_messages(channel):
+    start = ist_midnight_utc()
     count = 0
+
     async for msg in channel.history(after=start):
         if not msg.author.bot:
             count += 1
@@ -66,10 +71,9 @@ async def count_today_messages(channel):
 
 
 async def count_user_messages_today(channel, user):
-    now = datetime.now(IST)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
+    start = ist_midnight_utc()
     count = 0
+
     async for msg in channel.history(after=start):
         if msg.author.id == user.id and not msg.author.bot:
             count += 1
@@ -125,7 +129,6 @@ async def update_live_total():
 
     source = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
-
     if not source or not log:
         return
 
@@ -167,11 +170,7 @@ async def live_wins_loop():
     await client.wait_until_ready()
 
     while not client.is_closed():
-        try:
-            await update_live_total()
-        except:
-            pass
-
+        await update_live_total()
         await asyncio.sleep(random.randint(5, 10))
 
 # ================================
@@ -228,7 +227,7 @@ async def on_reaction_add(reaction, user):
         pass
 
 # ================================
-# SLASH COMMAND
+# SLASH COMMAND (UNCHANGED)
 # ================================
 @tree.command(
     name="daily_count",
