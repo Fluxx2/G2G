@@ -242,7 +242,7 @@ async def on_message(message):
             timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
             formatted = (
                 f"# `     {code}     `\n"
-                f"⏳ <t:{unix}:R>"
+                f"⏳ {timer}"
             )
 
 
@@ -285,7 +285,11 @@ async def on_message_edit(before, after):
         return
 
     timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
-    formatted = f"# `     {match.group(0)}     ` ⏳ {timer}"
+    formatted = (
+        f"# `     {match.group(0)}     `\n"
+        f"⏳ {timer}"
+    )
+
 
     for msg in mirrored.values():
         try:
