@@ -59,7 +59,7 @@ async def count_user_messages_today(channel, user):
     now = datetime.now(IST)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
-    async for msg in channel.history(after=start):
+    async for msg in channel.history(after=start, limit=None):
         if msg.author.id == user.id and not msg.author.bot:
             count += 1
     return count
@@ -69,7 +69,7 @@ async def count_total_messages_today(channel):
     now = datetime.now(IST)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
-    async for msg in channel.history(after=start):
+    async for msg in channel.history(after=start, limit=None):
         if not msg.author.bot:
             count += 1
     return count
@@ -143,7 +143,7 @@ async def daily_cleanup_task():
             )
 
 async def initialize_live_wins():
-    """Count all existing human messages today at startup."""
+    """Count all existing human messages today at startup and update live counter."""
     await client.wait_until_ready()
     global total_wins_today
     channel = client.get_channel(AUTO_CHANNEL_ID)
