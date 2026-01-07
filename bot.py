@@ -123,27 +123,24 @@ async def cleanup_channel(channel: discord.TextChannel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24)
 
-    delete_mode = False
     deleted = 0
 
     async for msg in channel.history(limit=None, oldest_first=True):
+        # ignore bots
         if msg.author.bot:
             continue
 
-        if msg.created_at <= cutoff:
-            delete_mode = True
-
-        if not delete_mode:
-            continue
-
-        try:
-            await msg.delete()
-            deleted += 1
-            await asyncio.sleep(0.4)
-        except:
-            pass
+        # ✅ delete messages sent WITHIN last 24 hours
+        if msg.created_at >= cutoff:
+            try:
+                await msg.delete()
+                deleted += 1
+                await asyncio.sleep(0.4)  # stay rate-limit safe
+            except:
+                pass
 
     return deleted
+
 
 
 
@@ -391,6 +388,7 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
 
