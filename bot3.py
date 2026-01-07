@@ -33,12 +33,9 @@ REACTIONS = [
 # BOT SETUP
 # ================================
 TOKEN = os.getenv("DISCORD_TOKEN_3")
-if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN_3 not set")
 
 intents = discord.Intents.default()
-intents.message_content = True
-intents.reactions = True
+intents.message_content = True  # reactions do NOT require intents.reactions
 
 client = discord.Client(intents=intents)
 
@@ -53,9 +50,11 @@ async def reaction_countdown(message):
         try:
             if last:
                 await message.remove_reaction(last, client.user)
+
             emoji = REACTIONS[i % len(REACTIONS)]
             await message.add_reaction(emoji)
             last = emoji
+
             await asyncio.sleep(REACTION_INTERVAL)
         except:
             break
@@ -70,7 +69,7 @@ async def on_ready():
 @client.event
 async def on_message(message):
 
-    # Auto-delete specific bots
+    # Auto-delete target bots
     if (
         message.author.bot
         and message.author.id in TARGET_BOT_IDS
@@ -86,11 +85,15 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Reaction countdown
+    # Reaction animation
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
 
 # ================================
-# RUN
+# RUN (BUILD-SAFE)
 # ================================
-client.run(TOKEN)
+if __name__ == "__main__":
+    if not TOKEN:
+        raise RuntimeError("DISCORD_TOKEN_3 not set")
+
+    client.run(TOKEN)
