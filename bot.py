@@ -44,8 +44,8 @@ client = discord.Client(intents=intents)
 # message_id -> { channel_id: discord.Message }
 mirrored_messages = {}
 
-# message_id -> timer string "<t:...:R>"
-code_timers = {}
+# message_id -> code/timer/emoji (SOURCE OF TRUTH)
+code_data = {}
 
 # ================================
 # HELPERS
@@ -54,23 +54,31 @@ def discord_relative_timestamp(seconds_from_now: int) -> str:
     unix = int(datetime.now(timezone.utc).timestamp()) + seconds_from_now
     return f"<t:{unix}:R>"
 
+def build_content(source_id: int) -> str:
+    data = code_data[source_id]
+    return (
+        f"# `     {data['code']}     `\n"
+        f"{data['emoji']} {data['timer']}"
+    )
+
 async def toggle_code_emoji(source_message_id: int):
-    toggle = True
     while True:
+        data = code_data.get(source_message_id)
         mirrored = mirrored_messages.get(source_message_id)
-        if not mirrored:
+
+        if not data or not mirrored:
             return
+
+        # toggle emoji
+        data["emoji"] = "🔚" if data["emoji"] == "⏳" else "⏳"
+        content = build_content(source_message_id)
 
         for msg in mirrored.values():
             try:
-                if toggle:
-                    await msg.edit(content=msg.content.replace("⏳", "🔚"))
-                else:
-                    await msg.edit(content=msg.content.replace("🔚", "⏳"))
+                await msg.edit(content=content)
             except:
                 pass
 
-        toggle = not toggle
         await asyncio.sleep(15)
 
 # ================================
@@ -106,22 +114,22 @@ async def on_message(message):
             return
 
         code = match.group(0)
-
-        # 🔹 Create timer ONCE
         timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
-        code_timers[message.id] = timer
 
-        formatted = (
-            f"# `     {code}     `\n"
-            f"⏳ {timer}"
-        )
+        # ✅ store canonical data
+        code_data[message.id] = {
+            "code": code,
+            "timer": timer,
+            "emoji": "⏳"
+        }
 
         mirrored_messages[message.id] = {}
+        content = build_content(message.id)
 
         for cid in MIRROR_TARGET_CHANNEL_IDS:
             ch = client.get_channel(cid)
             if ch:
-                mirrored_messages[message.id][cid] = await ch.send(formatted)
+                mirrored_messages[message.id][cid] = await ch.send(content)
 
         toggle_tasks[message.id] = client.loop.create_task(
             toggle_code_emoji(message.id)
@@ -129,34 +137,30 @@ async def on_message(message):
 
 @client.event
 async def on_message_edit(before, after):
+    data = code_data.get(after.id)
     mirrored = mirrored_messages.get(after.id)
-    if not mirrored:
+
+    if not data or not mirrored:
         return
 
     match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", after.content)
     if not match:
         return
 
-    # 🔹 REUSE original timer
-    timer = code_timers.get(after.id)
-    if not timer:
-        return
-
-    formatted = (
-        f"# `     {match.group(0)}     `\n"
-        f"⏳ {timer}"
-    )
+    # ✅ update ONLY the code
+    data["code"] = match.group(0)
+    content = build_content(after.id)
 
     for msg in mirrored.values():
         try:
-            await msg.edit(content=formatted)
+            await msg.edit(content=content)
         except:
             pass
 
 @client.event
 async def on_message_delete(message):
     mirrored = mirrored_messages.pop(message.id, None)
-    code_timers.pop(message.id, None)
+    code_data.pop(message.id, None)
 
     task = toggle_tasks.pop(message.id, None)
     if task:
