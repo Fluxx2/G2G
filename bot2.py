@@ -73,20 +73,32 @@ async def count_total_messages_today(channel):
     return count
 
 async def cleanup_channel(channel):
-    """Delete human messages older than 24h."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    """Delete human messages sent BEFORE today's IST midnight (oldest → newest)."""
+    ist_midnight = datetime.now(IST).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
     deleted = 0
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
-        if msg.created_at >= cutoff:
+
+        # Convert message time to IST
+        msg_time_ist = msg.created_at.astimezone(IST)
+
+        if msg_time_ist < ist_midnight:
             try:
                 await msg.delete()
                 deleted += 1
                 await asyncio.sleep(0.7)
             except:
                 pass
+        else:
+            # Stop once we hit messages from today
+            break
+
     return deleted
+
 
 async def reaction_countdown(message):
     """Cycle reactions on a message."""
@@ -251,7 +263,3 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
-
-
-
-
