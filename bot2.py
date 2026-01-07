@@ -48,8 +48,7 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 last_win_message = {}
-live_total_message = None
-total_wins_today = 0  # live total counter
+live_total_message = None  # Discord message showing live total
 
 # ================================
 # HELPERS
@@ -59,7 +58,7 @@ async def count_user_messages_today(channel, user):
     now = datetime.now(IST)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
-    async for msg in channel.history(after=start, limit=None):
+    async for msg in channel.history(limit=None, after=start):
         if msg.author.id == user.id and not msg.author.bot:
             count += 1
     return count
@@ -69,12 +68,13 @@ async def count_total_messages_today(channel):
     now = datetime.now(IST)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
-    async for msg in channel.history(after=start, limit=None):
+    async for msg in channel.history(limit=None, after=start):
         if not msg.author.bot:
             count += 1
     return count
 
 async def cleanup_channel(channel):
+    """Delete human messages older than 24h."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     deleted = 0
     async for msg in channel.history(limit=None, oldest_first=True):
@@ -90,6 +90,7 @@ async def cleanup_channel(channel):
     return deleted
 
 async def reaction_countdown(message):
+    """Cycle reactions on a message."""
     steps = REACTION_DURATION // REACTION_INTERVAL
     last = None
     for i in range(steps):
@@ -104,13 +105,16 @@ async def reaction_countdown(message):
             break
 
 async def update_live_total():
-    """Edit or send live total message in LOG_CHANNEL_ID."""
+    """Recount all human messages today and update the live total message."""
     global live_total_message
     log = client.get_channel(LOG_CHANNEL_ID)
-    if not log:
+    channel = client.get_channel(AUTO_CHANNEL_ID)
+    if not log or not channel:
         return
 
-    content = f"🏆 **Live Wins Today:** `{total_wins_today}`"
+    # Recount all messages every update to avoid inaccuracies
+    count = await count_total_messages_today(channel)
+    content = f"🏆 **Live Wins Today:** `{count}`"
 
     if live_total_message:
         try:
@@ -121,35 +125,43 @@ async def update_live_total():
 
     live_total_message = await log.send(content)
 
-async def initialize_live_wins():
-    """Count all existing human messages today at startup and update live counter."""
-    await client.wait_until_ready()
-    global total_wins_today
-    channel = client.get_channel(AUTO_CHANNEL_ID)
-    if channel:
-        total_wins_today = await count_total_messages_today(channel)
-        await update_live_total()
-
 # ================================
 # BACKGROUND TASKS
 # ================================
 async def daily_cleanup_task():
+    """Runs at IST midnight: deletes old messages, resets counters."""
     await client.wait_until_ready()
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
-    global total_wins_today
+
     while True:
         now = datetime.now(IST)
-        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         await asyncio.sleep((next_midnight - now).total_seconds())
-        wins = total_wins_today
+
+        # Delete live total message
+        if live_total_message:
+            try:
+                await live_total_message.delete()
+            except:
+                pass
+
         await cleanup_channel(channel)
-        total_wins_today = 0  # reset after cleanup
+        await update_live_total()  # recount after cleanup
+
         if log:
+            total = await count_total_messages_today(channel)
             await log.send(
                 f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
-                f"**🏆 todays win `{wins}` in** <#{AUTO_CHANNEL_ID}>"
+                f"**🏆 todays win `{total}` in** <#{AUTO_CHANNEL_ID}>"
             )
+
+# Initialize live total at startup
+async def initialize_live_wins():
+    await client.wait_until_ready()
+    await update_live_total()
 
 # ================================
 # EVENTS
@@ -163,7 +175,6 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    global total_wins_today
     if message.author.bot:
         return
 
@@ -173,11 +184,9 @@ async def on_message(message):
 
     # Live wins update
     if message.channel.id == AUTO_CHANNEL_ID:
-        # Count new message
-        total_wins_today += 1
-        await update_live_total()
+        await update_live_total()  # recount everything every time
 
-        # Per-user wins logic (from your old working code)
+        # Per-user win messages (every 10 wins)
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
