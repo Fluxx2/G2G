@@ -334,11 +334,31 @@ async def on_reaction_add(reaction, user):
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
-    channel = client.get_channel(interaction.channel_id)
+    try:
+        channel = await client.fetch_channel(interaction.channel_id)
+    except:
+        await interaction.followup.send(
+            "❌ Failed to fetch channel from Discord API.",
+            ephemeral=True
+        )
+        return
 
     if not isinstance(channel, discord.TextChannel):
         await interaction.followup.send(
-            "❌ This command can only be used in a text channel.",
+            "❌ This command must be used in a text channel.",
+            ephemeral=True
+        )
+        return
+
+    # PERMISSION CHECK (important)
+    perms = channel.permissions_for(channel.guild.me)
+    if not (
+        perms.view_channel
+        and perms.read_message_history
+        and perms.manage_messages
+    ):
+        await interaction.followup.send(
+            "❌ Missing permissions: View Channel / Read History / Manage Messages",
             ephemeral=True
         )
         return
@@ -354,9 +374,6 @@ async def daily_count(interaction: discord.Interaction):
         )
 
     await interaction.followup.send(
-        f"🏆 todays win **{deleted}**",
-        ephemeral=True
-    )
 
 
 # ================================
@@ -370,6 +387,7 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
 
