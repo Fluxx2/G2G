@@ -53,8 +53,6 @@ WINS_SOURCE_CHANNEL_ID = 1442370325831487608
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
 CODE_COUNTDOWN_SECONDS = 240
-CODE_COUNTDOWN_INTERVAL = 5
-
 IST = pytz.timezone("Asia/Kolkata")
 
 # ================================
@@ -74,7 +72,6 @@ tree = app_commands.CommandTree(client)
 
 last_win_message = {}
 mirrored_messages = {}
-code_tasks = {}
 
 daily_wins = 0
 live_wins_message = None
@@ -82,6 +79,12 @@ live_wins_message = None
 # ================================
 # HELPERS
 # ================================
+
+def discord_relative_timestamp(seconds_from_now: int) -> str:
+    unix = int(datetime.now(timezone.utc).timestamp()) + seconds_from_now
+    return f"<t:{unix}:R>"
+
+
 async def count_today_messages(channel: discord.TextChannel):
     now = datetime.now(IST)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -90,7 +93,6 @@ async def count_today_messages(channel: discord.TextChannel):
     async for msg in channel.history(limit=None, after=start):
         if not msg.author.bot:
             count += 1
-
     return count
 
 
@@ -137,14 +139,6 @@ async def seconds_until_ist_midnight():
     return (next_midnight - now).total_seconds()
 
 
-async def count_live_messages(channel, user):
-    count = 0
-    async for msg in channel.history(limit=None):
-        if msg.author.id == user.id and not msg.author.bot:
-            count += 1
-    return count
-
-
 async def update_live_wins():
     global live_wins_message, daily_wins
 
@@ -154,9 +148,7 @@ async def update_live_wins():
     if not log_channel or not source_channel:
         return
 
-    # 🔹 recount before every update
     daily_wins = await count_today_messages(source_channel)
-
     content = f"🏆 **Live Wins Today:** `{daily_wins}`"
 
     if live_wins_message:
@@ -167,29 +159,6 @@ async def update_live_wins():
             live_wins_message = None
 
     live_wins_message = await log_channel.send(content)
-
-
-async def run_code_countdown(source_id):
-    remaining = CODE_COUNTDOWN_SECONDS
-    while remaining >= 0:
-        mirrored = mirrored_messages.get(source_id)
-        if not mirrored:
-            return
-
-        mins = remaining // 60
-        secs = remaining % 60
-        timer = f"{mins:02d}:{secs:02d}"
-
-        for msg in mirrored.values():
-            try:
-                base = msg.content.split("⏳")[0].rstrip()
-                await msg.edit(content=f"{base} ⏳ {timer}")
-            except:
-                pass
-
-        await asyncio.sleep(CODE_COUNTDOWN_INTERVAL)
-        remaining -= CODE_COUNTDOWN_INTERVAL
-
 
 # ================================
 # BACKGROUND TASK
@@ -256,31 +225,27 @@ async def on_message(message):
         match = re.search(r"\b[a-zA-Z0-9]{5,6}\b", message.content)
         if match:
             code = match.group(0)
-            formatted = f"# `     {code}     ` ⏳ 04:00"
+            timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
+            formatted = f"# `     {code}     ` ⏳ {timer}"
 
             mirrored_messages[message.id] = {}
 
             for cid in MIRROR_TARGET_CHANNEL_IDS:
                 ch = client.get_channel(cid)
                 if ch:
-                    bot_msg = await ch.send(formatted)
-                    mirrored_messages[message.id][cid] = bot_msg
-
-            if message.id in code_tasks:
-                code_tasks[message.id].cancel()
-
-            code_tasks[message.id] = client.loop.create_task(
-                run_code_countdown(message.id)
-            )
+                    mirrored_messages[message.id][cid] = await ch.send(formatted)
 
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
 
     if message.channel.id == WINS_SOURCE_CHANNEL_ID:
-        global daily_wins
         await update_live_wins()
 
-        total = await count_live_messages(message.channel, message.author)
+        total = sum(
+            1 async for m in message.channel.history(limit=None)
+            if m.author.id == message.author.id and not m.author.bot
+        )
+
         if total > 0 and total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
             old = last_win_message.get(message.author.id)
@@ -304,7 +269,8 @@ async def on_message_edit(before, after):
     if not match:
         return
 
-    formatted = f"# `     {match.group(0)}     ` ⏳ 04:00"
+    timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
+    formatted = f"# `     {match.group(0)}     ` ⏳ {timer}"
 
     for msg in mirrored.values():
         try:
@@ -312,23 +278,12 @@ async def on_message_edit(before, after):
         except:
             pass
 
-    if after.id in code_tasks:
-        code_tasks[after.id].cancel()
-
-    code_tasks[after.id] = client.loop.create_task(
-        run_code_countdown(after.id)
-    )
-
 
 @client.event
 async def on_message_delete(message):
     mirrored = mirrored_messages.pop(message.id, None)
     if not mirrored:
         return
-
-    task = code_tasks.pop(message.id, None)
-    if task:
-        task.cancel()
 
     for msg in mirrored.values():
         try:
@@ -352,6 +307,7 @@ async def on_reaction_add(reaction, user):
             await msg.delete()
     except:
         pass
+
 # ================================
 # SLASH COMMAND
 # ================================
@@ -380,7 +336,7 @@ async def daily_count(interaction: discord.Interaction):
     )
 
 # ================================
-# RUN (SAFE)
+# RUN
 # ================================
 
 try:
@@ -390,4 +346,3 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
-
