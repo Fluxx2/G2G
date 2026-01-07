@@ -106,7 +106,7 @@ async def toggle_code_emoji(source_message_id: int):
                 pass
 
         toggle = not toggle
-        await asyncio.sleep(11)
+        await asyncio.sleep(15)
 
 
 def discord_relative_timestamp(seconds_from_now: int) -> str:
@@ -429,4 +429,5 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
