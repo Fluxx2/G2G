@@ -96,6 +96,14 @@ async def count_today_messages(channel: discord.TextChannel):
     return count
 
 
+async def count_user_messages(channel, user):
+    count = 0
+    async for msg in channel.history(limit=None):
+        if msg.author.id == user.id and not msg.author.bot:
+            count += 1
+    return count
+
+
 async def reaction_countdown(message):
     steps = REACTION_DURATION // REACTION_INTERVAL
     last = None
@@ -241,10 +249,7 @@ async def on_message(message):
     if message.channel.id == WINS_SOURCE_CHANNEL_ID:
         await update_live_wins()
 
-        total = sum(
-            1 async for m in message.channel.history(limit=None)
-            if m.author.id == message.author.id and not m.author.bot
-        )
+        total = await count_user_messages(message.channel, message.author)
 
         if total > 0 and total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
