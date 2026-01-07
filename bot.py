@@ -119,7 +119,7 @@ async def reaction_countdown(message):
             break
 
 
-async def cleanup_channel(channel):
+async def cleanup_channel(channel: discord.TextChannel):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24)
 
@@ -130,7 +130,6 @@ async def cleanup_channel(channel):
         if msg.author.bot:
             continue
 
-        # once we hit a message older than 24h, start deleting EVERYTHING after
         if msg.created_at <= cutoff:
             delete_mode = True
 
@@ -145,6 +144,7 @@ async def cleanup_channel(channel):
             pass
 
     return deleted
+
 
 
 
@@ -328,19 +328,28 @@ async def on_reaction_add(reaction, user):
 
 @tree.command(
     name="daily_count",
-    description="Delete human messages under 24h30m",
+    description="Delete human messages 24h+ and everything after",
     guild=discord.Object(id=GUILD_ID)
 )
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
-    deleted = await cleanup_channel(interaction.channel)
+    channel = client.get_channel(interaction.channel_id)
+
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.followup.send(
+            "❌ This command can only be used in a text channel.",
+            ephemeral=True
+        )
+        return
+
+    deleted = await cleanup_channel(channel)
 
     log = client.get_channel(LOG_CHANNEL_ID)
     if log:
         await log.send(
             f"🧹 **Manual Daily Cleanup**\n"
-            f"📍 <#{interaction.channel.id}>\n"
+            f"📍 <#{channel.id}>\n"
             f"🏆 todays win **{deleted}**"
         )
 
@@ -348,6 +357,7 @@ async def daily_count(interaction: discord.Interaction):
         f"🏆 todays win **{deleted}**",
         ephemeral=True
     )
+
 
 # ================================
 # RUN
@@ -360,5 +370,6 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
