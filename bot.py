@@ -240,7 +240,11 @@ async def on_message(message):
         if match:
             code = match.group(0)
             timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
-            formatted = f"# `     {code}     `⏳🔚{timer}"
+            formatted = (
+                f"# `     {code}     `\n"
+                f"⏳ <t:{unix}:R>"
+            )
+
 
             mirrored_messages[message.id] = {}
 
@@ -388,6 +392,7 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
 
