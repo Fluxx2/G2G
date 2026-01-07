@@ -350,7 +350,6 @@ async def daily_count(interaction: discord.Interaction):
         )
         return
 
-    # PERMISSION CHECK (important)
     perms = channel.permissions_for(channel.guild.me)
     if not (
         perms.view_channel
@@ -373,7 +372,12 @@ async def daily_count(interaction: discord.Interaction):
             f"🏆 todays win **{deleted}**"
         )
 
+    # ✅ THIS WAS THE BROKEN LINE — NOW CLOSED PROPERLY
     await interaction.followup.send(
+        f"🏆 todays win **{deleted}**",
+        ephemeral=True
+    )
+
 
 
 # ================================
@@ -387,6 +391,7 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
 
