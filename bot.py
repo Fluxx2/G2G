@@ -241,6 +241,13 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
 
+    # 🔹 Start toggle tasks for old mirrored messages (bot restart)
+    for orig_msg_id in mirrored_messages.keys():
+        if orig_msg_id not in toggle_tasks:
+            toggle_tasks[orig_msg_id] = client.loop.create_task(
+                toggle_code_emoji(orig_msg_id)
+            )
+
 
 @client.event
 async def on_message(message):
@@ -430,11 +437,3 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
-
-
-
-
-
-
-
-
