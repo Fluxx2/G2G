@@ -1,7 +1,6 @@
 import discord
 import asyncio
 import os
-import random
 from datetime import datetime, timedelta, timezone
 import pytz
 from discord import app_commands
@@ -52,14 +51,16 @@ last_win_message = {}
 live_total_message = None
 
 # ================================
-# HELPERS
+# TIME HELPERS
 # ================================
 def ist_midnight_utc():
     now_ist = datetime.now(IST)
     midnight_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
     return midnight_ist.astimezone(timezone.utc)
 
-
+# ================================
+# COUNTING
+# ================================
 async def count_today_messages(channel):
     start = ist_midnight_utc()
     count = 0
@@ -79,7 +80,9 @@ async def count_user_messages_today(channel, user):
             count += 1
     return count
 
-
+# ================================
+# CLEANUP
+# ================================
 async def cleanup_channel(channel):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     deleted = 0
@@ -97,15 +100,9 @@ async def cleanup_channel(channel):
 
     return deleted
 
-
-async def seconds_until_ist_midnight():
-    now = datetime.now(IST)
-    next_midnight = (now + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    return (next_midnight - now).total_seconds()
-
-
+# ================================
+# REACTIONS
+# ================================
 async def reaction_countdown(message):
     steps = REACTION_DURATION // REACTION_INTERVAL
     last = None
@@ -123,7 +120,9 @@ async def reaction_countdown(message):
         except:
             break
 
-
+# ================================
+# LIVE WINS (FIXED)
+# ================================
 async def update_live_total():
     global live_total_message
 
@@ -135,6 +134,12 @@ async def update_live_total():
     total = await count_today_messages(source)
     content = f"🏆 **Live Wins Today:** `{total}`"
 
+    if not live_total_message:
+        async for msg in log.history(limit=20):
+            if msg.author == client.user and "Live Wins Today" in msg.content:
+                live_total_message = msg
+                break
+
     if live_total_message:
         try:
             await live_total_message.edit(content=content)
@@ -144,9 +149,25 @@ async def update_live_total():
 
     live_total_message = await log.send(content)
 
+
+async def live_wins_loop():
+    await client.wait_until_ready()
+
+    while not client.is_closed():
+        await update_live_total()
+        await asyncio.sleep(10)
+
 # ================================
-# BACKGROUND TASKS
+# DAILY CLEANUP TASK
 # ================================
+async def seconds_until_ist_midnight():
+    now = datetime.now(IST)
+    next_midnight = (now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return (next_midnight - now).total_seconds()
+
+
 async def daily_cleanup_task():
     await client.wait_until_ready()
 
@@ -164,14 +185,6 @@ async def daily_cleanup_task():
                 f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
                 f"**🏆 todays win `{wins}` in** <#{AUTO_CHANNEL_ID}>"
             )
-
-
-async def live_wins_loop():
-    await client.wait_until_ready()
-
-    while not client.is_closed():
-        await update_live_total()
-        await asyncio.sleep(random.randint(5, 10))
 
 # ================================
 # EVENTS
@@ -209,23 +222,6 @@ async def on_message(message):
                 f"{message.author.mention} **wins done today so far ({total})**"
             )
 
-
-@client.event
-async def on_reaction_add(reaction, user):
-    try:
-        msg = reaction.message
-        if (
-            not user.bot
-            and msg.channel.id == REACTION_CHANNEL_ID
-            and msg.author.id == TARGET_USER_ID
-            and isinstance(reaction.emoji, discord.Emoji)
-            and reaction.emoji.id == TARGET_EMOJI_ID
-            and reaction.count >= REACTION_THRESHOLD
-        ):
-            await msg.delete()
-    except:
-        pass
-
 # ================================
 # SLASH COMMAND (UNCHANGED)
 # ================================
@@ -237,14 +233,13 @@ async def on_reaction_add(reaction, user):
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
-    channel = interaction.channel
-    deleted = await cleanup_channel(channel)
+    deleted = await cleanup_channel(interaction.channel)
 
     log = client.get_channel(LOG_CHANNEL_ID)
     if log:
         await log.send(
             f"🧹 **Manual Daily Cleanup**\n"
-            f"📍 <#{channel.id}>\n"
+            f"📍 <#{interaction.channel.id}>\n"
             f"🏆 todays win **{deleted}**"
         )
 
