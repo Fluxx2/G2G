@@ -162,7 +162,7 @@ async def cleanup_channel(channel: discord.TextChannel):
             try:
                 await msg.delete()
                 deleted += 1
-                await asyncio.sleep(0.4)
+                await asyncio.sleep(0.8)
             except:
                 pass
 
@@ -429,5 +429,6 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
