@@ -80,22 +80,26 @@ live_wins_message = None
 # ================================
 # HELPERS
 # ================================
+
+# ✅ FIXED TOGGLE (CHANGE 1)
 async def toggle_code_emoji(source_message_id: int):
     toggle = True
 
     while True:
         mirrored = mirrored_messages.get(source_message_id)
         if not mirrored:
-            return  # stop if original deleted
+            return
 
         for msg in mirrored.values():
             try:
                 content = msg.content
 
                 if toggle:
-                    content = content.replace("⏳", "🔚")
+                    if "⏳" in content:
+                        content = content.replace("⏳", "🔚")
                 else:
-                    content = content.replace("🔚", "⏳")
+                    if "🔚" in content:
+                        content = content.replace("🔚", "⏳")
 
                 await msg.edit(content=content)
             except:
@@ -151,23 +155,18 @@ async def cleanup_channel(channel: discord.TextChannel):
     deleted = 0
 
     async for msg in channel.history(limit=None, oldest_first=True):
-        # ignore bots
         if msg.author.bot:
             continue
 
-        # ✅ delete messages sent WITHIN last 24 hours
         if msg.created_at >= cutoff:
             try:
                 await msg.delete()
                 deleted += 1
-                await asyncio.sleep(0.4)  # stay rate-limit safe
+                await asyncio.sleep(0.4)
             except:
                 pass
 
     return deleted
-
-
-
 
 
 async def seconds_until_ist_midnight():
@@ -241,13 +240,6 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
 
-    # 🔹 Start toggle tasks for old mirrored messages (bot restart)
-    for orig_msg_id in mirrored_messages.keys():
-        if orig_msg_id not in toggle_tasks:
-            toggle_tasks[orig_msg_id] = client.loop.create_task(
-                toggle_code_emoji(orig_msg_id)
-            )
-
 
 @client.event
 async def on_message(message):
@@ -276,7 +268,6 @@ async def on_message(message):
                 f"# `     {code}     `\n"
                 f"⏳ {timer}"
             )
-
 
             mirrored_messages[message.id] = {}
 
@@ -326,12 +317,17 @@ async def on_message_edit(before, after):
         f"⏳ {timer}"
     )
 
-
     for msg in mirrored.values():
         try:
             await msg.edit(content=formatted)
         except:
             pass
+
+    # ✅ FIX 2 — restart toggle after edit
+    if after.id not in toggle_tasks:
+        toggle_tasks[after.id] = client.loop.create_task(
+            toggle_code_emoji(after.id)
+        )
 
 
 @client.event
@@ -340,7 +336,6 @@ async def on_message_delete(message):
     if not mirrored:
         return
 
-    # Cancel the emoji toggle task for this message
     task = toggle_tasks.pop(message.id, None)
     if task:
         task.cancel()
@@ -418,13 +413,10 @@ async def daily_count(interaction: discord.Interaction):
             f"🏆 todays win **{deleted}**"
         )
 
-    # ✅ THIS WAS THE BROKEN LINE — NOW CLOSED PROPERLY
     await interaction.followup.send(
         f"🏆 todays win **{deleted}**",
         ephemeral=True
     )
-
-
 
 # ================================
 # RUN
