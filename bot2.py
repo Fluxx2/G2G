@@ -84,7 +84,7 @@ async def cleanup_channel(channel):
             try:
                 await msg.delete()
                 deleted += 1
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(0.7)
             except:
                 pass
     return deleted
@@ -112,7 +112,7 @@ async def update_live_total():
     if not log or not channel:
         return
 
-    # Recount all messages every update to avoid inaccuracies
+    # Recount all messages every update
     count = await count_total_messages_today(channel)
     content = f"🏆 **Live Wins Today:** `{count}`"
 
@@ -128,6 +128,16 @@ async def update_live_total():
 # ================================
 # BACKGROUND TASKS
 # ================================
+async def live_wins_loop():
+    """Update live wins every 60 seconds."""
+    await client.wait_until_ready()
+    while not client.is_closed():
+        try:
+            await update_live_total()
+        except:
+            pass
+        await asyncio.sleep(30)  # 1 minute
+
 async def daily_cleanup_task():
     """Runs at IST midnight: deletes old messages, resets counters."""
     await client.wait_until_ready()
@@ -171,6 +181,7 @@ async def on_ready():
     print(f"✅ Wins Bot logged in as {client.user}")
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
+    client.loop.create_task(live_wins_loop())  # 1-min live updates
     client.loop.create_task(initialize_live_wins())
 
 @client.event
@@ -182,11 +193,8 @@ async def on_message(message):
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
 
-    # Live wins update
+    # Per-user win messages (every 10 wins)
     if message.channel.id == AUTO_CHANNEL_ID:
-        await update_live_total()  # recount everything every time
-
-        # Per-user win messages (every 10 wins)
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
