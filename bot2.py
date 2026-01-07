@@ -15,15 +15,14 @@ LOG_CHANNEL_ID = 1443852961502466090
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
 REACTION_CHANNEL_ID = 1442370325831487608
-REACTION_INTERVAL = 10
+REACTION_INTERVAL = 19
 REACTION_DURATION = 240
 
 REACTIONS = [
-    "⚪","⚪","⚪","⚪","⚪",
-    "🟢","🟢","🟢","🟢","🟢","🟢",
-    "🟡","🟡","🟡","🟡","🟡",
-    "🔴","🔴","🔴",
-    "⚠️","‼️","🚨",
+    "⚪","⚪","⚪","⚪",
+    "🟢","🟢","🟢","🟢",
+    "🟡","🟡","🟡","🟡",
+    "🔴","⚠️","‼️","🚨",
     "🚫","🚫"
 ]
 
@@ -136,7 +135,7 @@ async def live_wins_loop():
             await update_live_total()
         except:
             pass
-        await asyncio.sleep(30)  # 1 minute
+        await asyncio.sleep(60)  # 1 minute
 
 async def daily_cleanup_task():
     """Runs at IST midnight: deletes old messages, resets counters."""
@@ -241,10 +240,10 @@ async def daily_count(interaction: discord.Interaction):
         await log.send(
             f"🧹 **Manual Daily Cleanup**\n"
             f"📍 <#{channel.id}>\n"
-            f"🏆 todays win **{deleted}**"
+            f"**🏆 todays win {deleted}**"
         )
     await interaction.followup.send(
-        f"🏆 todays win **{deleted}**",
+        f"**🏆 todays win {deleted}**",
         ephemeral=True
     )
 
@@ -252,3 +251,4 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
