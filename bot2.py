@@ -1,7 +1,7 @@
 import discord
 import asyncio
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import pytz
 from discord import app_commands
 
@@ -17,6 +17,8 @@ WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
+
+DELETE_BOT_MESSAGES_AFTER = 225  # ⬅️ NEW FEATURE
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -147,9 +149,20 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+
+    # ✅ AUTO-DELETE BOT / WEBHOOK MESSAGES (NEW FEATURE)
+    if message.author.bot and message.channel.id == AUTO_CHANNEL_ID:
+        await asyncio.sleep(DELETE_BOT_MESSAGES_AFTER)
+        try:
+            await message.delete()
+        except:
+            pass
+        return
+
     if message.author.bot:
         return
 
+    # User win announcements
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
