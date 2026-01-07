@@ -9,6 +9,7 @@ import re
 # ================================
 # CONFIG
 # ================================
+toggle_tasks = {}
 
 MIRROR_SOURCE_CHANNEL_ID = 1442370325831487608
 MIRROR_TARGET_CHANNEL_IDS = {
@@ -79,6 +80,30 @@ live_wins_message = None
 # ================================
 # HELPERS
 # ================================
+async def toggle_code_emoji(source_message_id: int):
+    toggle = True
+
+    while True:
+        mirrored = mirrored_messages.get(source_message_id)
+        if not mirrored:
+            return  # stop if original deleted
+
+        for msg in mirrored.values():
+            try:
+                content = msg.content
+
+                if toggle:
+                    content = content.replace("⏳", "🔚")
+                else:
+                    content = content.replace("🔚", "⏳")
+
+                await msg.edit(content=content)
+            except:
+                pass
+
+        toggle = not toggle
+        await asyncio.sleep(5)
+
 
 def discord_relative_timestamp(seconds_from_now: int) -> str:
     unix = int(datetime.now(timezone.utc).timestamp()) + seconds_from_now
@@ -252,6 +277,10 @@ async def on_message(message):
                 ch = client.get_channel(cid)
                 if ch:
                     mirrored_messages[message.id][cid] = await ch.send(formatted)
+                    if message.id not in toggle_tasks:
+                        toggle_tasks[message.id] = client.loop.create_task(
+                            toggle_code_emoji(message.id)
+                        )
 
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
@@ -303,6 +332,11 @@ async def on_message_delete(message):
     mirrored = mirrored_messages.pop(message.id, None)
     if not mirrored:
         return
+
+    # Cancel the emoji toggle task for this message
+    task = toggle_tasks.pop(message.id, None)
+    if task:
+        task.cancel()
 
     for msg in mirrored.values():
         try:
@@ -396,6 +430,7 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
 
