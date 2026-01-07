@@ -47,6 +47,7 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 last_win_message = {}
+live_total_message = None
 
 # ================================
 # HELPERS
@@ -60,6 +61,36 @@ async def count_today_messages(channel):
         if not msg.author.bot:
             count += 1
     return count
+
+async def count_user_today(channel, user):
+    now = datetime.now(IST)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    count = 0
+    async for msg in channel.history(after=start):
+        if msg.author.id == user.id and not msg.author.bot:
+            count += 1
+    return count
+
+async def update_live_total():
+    global live_total_message
+
+    channel = client.get_channel(AUTO_CHANNEL_ID)
+    log = client.get_channel(LOG_CHANNEL_ID)
+
+    if not channel or not log:
+        return
+
+    total = await count_today_messages(channel)
+    content = f"🏆 **Live Wins Today:** `{total}`"
+
+    if live_total_message:
+        try:
+            await live_total_message.edit(content=content)
+            return
+        except:
+            live_total_message = None
+
+    live_total_message = await log.send(content)
 
 async def cleanup_channel(channel):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -133,21 +164,24 @@ async def on_ready():
     print(f"✅ Wins Bot logged in as {client.user}")
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(daily_cleanup_task())
+    await update_live_total()
 
 @client.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # 🔹 Start reaction countdown
     if message.channel.id == REACTION_CHANNEL_ID:
         client.loop.create_task(reaction_countdown(message))
 
-    # 🔹 Wins counter
     if message.channel.id == AUTO_CHANNEL_ID:
-        total = await count_today_messages(message.channel)
+        await update_live_total()
 
-        if total > 0 and total % 10 == 0:
+        user_total = await count_user_today(message.channel, message.author)
+
+        if user_total > 0 and user_total % 10 == 0:
+            announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
+
             old = last_win_message.get(message.author.id)
             if old:
                 try:
@@ -155,8 +189,8 @@ async def on_message(message):
                 except:
                     pass
 
-            last_win_message[message.author.id] = await message.channel.send(
-                f"{message.author.mention} **wins done today so far ({total})**"
+            last_win_message[message.author.id] = await announce.send(
+                f"{message.author.mention} **wins done today so far ({user_total})**"
             )
 
 @client.event
