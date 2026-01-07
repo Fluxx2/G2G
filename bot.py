@@ -34,15 +34,14 @@ AUTO_CHANNEL_ID = 1442370325831487608
 LOG_CHANNEL_ID = 1443852961502466090
 
 REACTION_CHANNEL_ID = 1442370325831487608
-REACTION_INTERVAL = 10
+REACTION_INTERVAL = 15
 REACTION_DURATION = 240
 
 REACTIONS = [
-    "⚪","⚪","⚪","⚪","⚪",
-    "🟢","🟢","🟢","🟢","🟢","🟢",
-    "🟡","🟡","🟡","🟡","🟡",
-    "🔴","🔴","🔴",
-    "⚠️","‼️","🚨",
+    "⚪","⚪","⚪","⚪",
+    "🟢","🟢","🟢","🟢","🟢",
+    "🟡","🟡","🟡","🟡",
+    "🔴","🔴","⚠️","‼️","🚨",
     "🚫","🚫"
 ]
 
@@ -162,7 +161,7 @@ async def cleanup_channel(channel: discord.TextChannel):
             try:
                 await msg.delete()
                 deleted += 1
-                await asyncio.sleep(0.8)
+                await asyncio.sleep(1.6)
             except:
                 pass
 
@@ -429,6 +428,7 @@ except discord.HTTPException as e:
         print("Hit Discord global rate limit. Wait before restarting.")
     else:
         raise
+
 
 
 
