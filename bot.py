@@ -121,14 +121,22 @@ async def reaction_countdown(message):
 
 async def cleanup_channel(channel):
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(hours=24, minutes=30)
+    cutoff = now - timedelta(hours=24)
+
+    delete_mode = False
     deleted = 0
 
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
-        if msg.created_at > cutoff:
+
+        # once we hit a message older than 24h, start deleting EVERYTHING after
+        if msg.created_at <= cutoff:
+            delete_mode = True
+
+        if not delete_mode:
             continue
+
         try:
             await msg.delete()
             deleted += 1
@@ -137,6 +145,7 @@ async def cleanup_channel(channel):
             pass
 
     return deleted
+
 
 
 async def seconds_until_ist_midnight():
@@ -234,7 +243,7 @@ async def on_message(message):
         if match:
             code = match.group(0)
             timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
-            formatted = f"# `     {code}     `⏳ENDS {timer}"
+            formatted = f"# `     {code}     `⏳🔚{timer}"
 
             mirrored_messages[message.id] = {}
 
