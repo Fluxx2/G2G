@@ -16,14 +16,14 @@ WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
 REACTION_CHANNEL_ID = 1442370325831487608
 REACTION_INTERVAL = 19
-REACTION_DURATION = 240
+REACTION_DURATION = 243
 
 REACTIONS = [
     "⚪","⚪","⚪",
     "🟢","🟢","🟢",
     "🟡","🟡","🟡",
     "⚠️","‼️","🚨",
-    "🚫","🚫"
+    "🚫"
 ]
 
 TARGET_USER_ID = 906546198754775082
@@ -251,5 +251,6 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
 
