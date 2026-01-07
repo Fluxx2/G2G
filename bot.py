@@ -41,12 +41,15 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 
+# message_id -> { channel_id: discord.Message }
 mirrored_messages = {}
+
+# message_id -> timer string "<t:...:R>"
+code_timers = {}
 
 # ================================
 # HELPERS
 # ================================
-
 def discord_relative_timestamp(seconds_from_now: int) -> str:
     unix = int(datetime.now(timezone.utc).timestamp()) + seconds_from_now
     return f"<t:{unix}:R>"
@@ -60,12 +63,10 @@ async def toggle_code_emoji(source_message_id: int):
 
         for msg in mirrored.values():
             try:
-                content = msg.content
                 if toggle:
-                    content = content.replace("⏳", "🔚")
+                    await msg.edit(content=msg.content.replace("⏳", "🔚"))
                 else:
-                    content = content.replace("🔚", "⏳")
-                await msg.edit(content=content)
+                    await msg.edit(content=msg.content.replace("🔚", "⏳"))
             except:
                 pass
 
@@ -75,7 +76,6 @@ async def toggle_code_emoji(source_message_id: int):
 # ================================
 # EVENTS
 # ================================
-
 @client.event
 async def on_ready():
     print(f"✅ Code Bot logged in as {client.user}")
@@ -106,7 +106,10 @@ async def on_message(message):
             return
 
         code = match.group(0)
+
+        # 🔹 Create timer ONCE
         timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
+        code_timers[message.id] = timer
 
         formatted = (
             f"# `     {code}     `\n"
@@ -134,7 +137,11 @@ async def on_message_edit(before, after):
     if not match:
         return
 
-    timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
+    # 🔹 REUSE original timer
+    timer = code_timers.get(after.id)
+    if not timer:
+        return
+
     formatted = (
         f"# `     {match.group(0)}     `\n"
         f"⏳ {timer}"
@@ -149,12 +156,14 @@ async def on_message_edit(before, after):
 @client.event
 async def on_message_delete(message):
     mirrored = mirrored_messages.pop(message.id, None)
-    if not mirrored:
-        return
+    code_timers.pop(message.id, None)
 
     task = toggle_tasks.pop(message.id, None)
     if task:
         task.cancel()
+
+    if not mirrored:
+        return
 
     for msg in mirrored.values():
         try:
