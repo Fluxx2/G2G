@@ -1,28 +1,13 @@
 """
 Wins Bot Features:
 
-1. Live Wins Counter:
-
-2. Daily Cleanup:
-
-3. Auto-Delete Bot Messages: in both channels
-
-4. User Milestone Announcements:
-   - Tracks per-user daily messages in AUTO_CHANNEL_ID.
-   - Every 10 messages, announces the milestone in WINS_ANNOUNCE_CHANNEL_ID.
-   - Deletes the previous milestone message to avoid spam.
-
-5. Reaction-Based Deletion:
-   - Monitors messages from TARGET_USER_ID in AUTO_CHANNEL_ID.
-   - Deletes a message if it receives REACTION_THRESHOLD or more reactions of a specific custom emoji.
-
-6. Timezone Handling:
-   - All daily resets, counts, and cleanup tasks operate in IST (Asia/Kolkata).
-
-7. Slash Command:
-
-8. Stability and Safety:
-
+1. Live Wins Counter
+2. Daily Cleanup (IST Midnight)
+3. User Milestone Announcements
+4. Reaction-Based Deletion
+5. Timezone Handling (IST)
+6. Slash Command
+7. Stability and Safety
 """
 
 import discord
@@ -42,16 +27,9 @@ SECOND_AUTO_CHANNEL_ID = 1449692284596523068
 LOG_CHANNEL_ID = 1443852961502466090
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
-BOT_AUTO_DELETE_CHANNEL_IDS = {
-    AUTO_CHANNEL_ID,
-    SECOND_AUTO_CHANNEL_ID
-}
-
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
-
-DELETE_BOT_MESSAGES_AFTER = 225  # seconds
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -170,33 +148,6 @@ async def daily_cleanup_task():
                 f"**🏆 todays win `{total}` in** <#{AUTO_CHANNEL_ID}>"
             )
 
-# -------------------------------
-# Auto-delete old bot messages
-# -------------------------------
-async def auto_delete_old_bot_messages():
-    await client.wait_until_ready()
-    while not client.is_closed():
-        now = datetime.now(tz=pytz.UTC)  # ✅ offset-aware UTC
-        for channel_id in BOT_AUTO_DELETE_CHANNEL_IDS:
-            channel = client.get_channel(channel_id)
-            if not channel:
-                continue
-
-            async for msg in channel.history(limit=None, oldest_first=True):
-                if not msg.author.bot:
-                    continue
-
-                # Check age in seconds
-                age = (now - msg.created_at).total_seconds()
-                if age >= DELETE_BOT_MESSAGES_AFTER:
-                    try:
-                        await msg.delete()
-                        await asyncio.sleep(0.5)  # small delay to avoid rate limits
-                    except:
-                        pass
-
-        await asyncio.sleep(15)
-
 # ================================
 # EVENTS
 # ================================
@@ -206,7 +157,6 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(live_wins_loop())
     client.loop.create_task(daily_cleanup_task())
-    client.loop.create_task(auto_delete_old_bot_messages())
 
 @client.event
 async def on_message(message):
@@ -271,5 +221,3 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
-
-
