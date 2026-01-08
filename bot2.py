@@ -65,7 +65,7 @@ async def count_user_messages_today(channel, user):
     return count
 
 async def count_total_messages_today(channel):
-    start = datetime.now(IST).replace(hour=1, minute=31, second=50, microsecond=0)
+    start = datetime.now(IST).replace(hour=1, minute=41, second=50, microsecond=0)
     count = 0
     async for msg in channel.history(limit=None, after=start):
         if not msg.author.bot:
@@ -241,4 +241,5 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
