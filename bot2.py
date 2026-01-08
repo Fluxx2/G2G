@@ -254,20 +254,36 @@ async def daily_count(interaction: discord.Interaction):
 
 @tree.command(
     name="reset_now",
-    description="Force cleanup now and log final deleted count",
+    description="Force delete messages older than 24h (oldest → newest) and log count",
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
-    global live_total_message, daily_deleted_count, last_reset_date
+    global live_total_message
 
     await interaction.response.defer(ephemeral=True)
 
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
 
-    # reset bucket FIRST for a clean count
-    daily_deleted_count = 0
-    last_reset_date = datetime.now(IST).date()
+    now = datetime.now(IST)
+    cutoff = now - timedelta(hours=24)
+
+    deleted_count = 0
+
+    # delete oldest → newest, only msgs older than 24h
+    async for msg in channel.history(limit=None, oldest_first=True):
+        if msg.author.bot:
+            continue
+
+        if msg.created_at.astimezone(IST) < cutoff:
+            try:
+                await msg.delete()
+                deleted_count += 1
+                await asyncio.sleep(0.7)
+            except:
+                pass
+        else:
+            break  # stop once we reach newer messages
 
     # remove live counter message
     if live_total_message:
@@ -277,20 +293,17 @@ async def reset_now(interaction: discord.Interaction):
             pass
         live_total_message = None
 
-    # perform cleanup and count deletions
-    deleted_now = await cleanup_channel(channel)
-
-    # log FINAL correct count
+    # send FINAL count to log channel
     if log:
         await log.send(
-            f"⚡ **Manual Reset Triggered**\n"
-            f"**🏆 todays win {deleted_now} in** <#{AUTO_CHANNEL_ID}>"
+            f"⚡ **Manual Reset Executed**\n"
+            f"**🏆 todays win {deleted_count} in** <#{AUTO_CHANNEL_ID}>"
         )
 
     await update_live_total()
 
     await interaction.followup.send(
-        f"✅ Reset complete — `{deleted_now}` messages deleted",
+        f"✅ Reset complete — `{deleted_count}` messages deleted",
         ephemeral=True
     )
 
@@ -300,4 +313,5 @@ async def reset_now(interaction: discord.Interaction):
 # ================================
 
 client.run(TOKEN)
+
 
