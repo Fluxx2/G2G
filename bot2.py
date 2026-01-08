@@ -11,14 +11,20 @@ from discord import app_commands
 GUILD_ID = 1442370324858667041
 
 AUTO_CHANNEL_ID = 1442370325831487608
+SECOND_AUTO_CHANNEL_ID = 1449692284596523068
 LOG_CHANNEL_ID = 1443852961502466090
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
+
+BOT_AUTO_DELETE_CHANNEL_IDS = {
+    AUTO_CHANNEL_ID,
+    SECOND_AUTO_CHANNEL_ID
+}
 
 TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
-DELETE_BOT_MESSAGES_AFTER = 225  # ⬅️ NEW FEATURE
+DELETE_BOT_MESSAGES_AFTER = 225
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -150,8 +156,12 @@ async def on_ready():
 @client.event
 async def on_message(message):
 
-    # ✅ AUTO-DELETE BOT / WEBHOOK MESSAGES (NEW FEATURE)
-    if message.author.bot and message.channel.id == AUTO_CHANNEL_ID:
+    # ✅ AUTO-DELETE BOT / WEBHOOK MESSAGES (BOTH CHANNELS)
+    if (
+        message.author.bot
+        and message.author.id != client.user.id
+        and message.channel.id in BOT_AUTO_DELETE_CHANNEL_IDS
+    ):
         await asyncio.sleep(DELETE_BOT_MESSAGES_AFTER)
         try:
             await message.delete()
@@ -162,7 +172,7 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # User win announcements
+    # User win announcements (only in main auto channel)
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
