@@ -254,20 +254,22 @@ async def daily_count(interaction: discord.Interaction):
 
 @tree.command(
     name="reset_now",
-    description="Force reset and cleanup immediately",
+    description="Force cleanup now and log final deleted count",
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
-    global daily_deleted_count, live_total_message
+    global live_total_message, daily_deleted_count, last_reset_date
 
     await interaction.response.defer(ephemeral=True)
-
-    ensure_daily_bucket()
-    daily_deleted_count = 0
 
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
 
+    # reset bucket FIRST for a clean count
+    daily_deleted_count = 0
+    last_reset_date = datetime.now(IST).date()
+
+    # remove live counter message
     if live_total_message:
         try:
             await live_total_message.delete()
@@ -275,23 +277,27 @@ async def reset_now(interaction: discord.Interaction):
             pass
         live_total_message = None
 
-    await cleanup_channel(channel)
+    # perform cleanup and count deletions
+    deleted_now = await cleanup_channel(channel)
 
+    # log FINAL correct count
     if log:
         await log.send(
             f"⚡ **Manual Reset Triggered**\n"
-            f"**🏆 todays win {daily_deleted_count} in** <#{AUTO_CHANNEL_ID}>"
+            f"**🏆 todays win {deleted_now} in** <#{AUTO_CHANNEL_ID}>"
         )
 
     await update_live_total()
 
     await interaction.followup.send(
-        "✅ **Reset completed successfully**",
+        f"✅ Reset complete — `{deleted_now}` messages deleted",
         ephemeral=True
     )
+
 
 # ================================
 # RUN
 # ================================
 
 client.run(TOKEN)
+
