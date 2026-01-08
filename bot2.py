@@ -1,3 +1,42 @@
+"""
+Wins Bot Features:
+
+1. Live Wins Counter:
+   - Tracks all non-bot messages in AUTO_CHANNEL_ID.
+   - Updates a live message in LOG_CHANNEL_ID every 60 seconds showing total wins today.
+
+2. Daily Cleanup:
+   - Deletes all user messages in AUTO_CHANNEL_ID older than today (IST midnight).
+   - Resets the live wins message.
+   - Posts a daily cleanup summary in LOG_CHANNEL_ID.
+
+3. Auto-Delete Bot Messages:
+   - Deletes any bot message in AUTO_CHANNEL_ID and SECOND_AUTO_CHANNEL_ID
+     that is older than 225 seconds.
+   - Runs continuously every 15 seconds to catch old messages.
+
+4. User Milestone Announcements:
+   - Tracks per-user daily messages in AUTO_CHANNEL_ID.
+   - Every 10 messages, announces the milestone in WINS_ANNOUNCE_CHANNEL_ID.
+   - Deletes the previous milestone message to avoid spam.
+
+5. Reaction-Based Deletion:
+   - Monitors messages from TARGET_USER_ID in AUTO_CHANNEL_ID.
+   - Deletes a message if it receives REACTION_THRESHOLD or more reactions of a specific custom emoji.
+
+6. Timezone Handling:
+   - All daily resets, counts, and cleanup tasks operate in IST (Asia/Kolkata).
+
+7. Slash Command:
+   - /daily_count: manually delete messages before today and log the result.
+
+8. Stability and Safety:
+   - Uses try/except to prevent crashes.
+   - Skips bot messages where needed.
+   - Async tasks prevent blocking.
+
+"""
+
 import discord
 import asyncio
 import os
@@ -24,7 +63,7 @@ TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
-DELETE_BOT_MESSAGES_AFTER = 225
+DELETE_BOT_MESSAGES_AFTER = 225  # seconds
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -143,6 +182,32 @@ async def daily_cleanup_task():
                 f"**🏆 todays win `{total}` in** <#{AUTO_CHANNEL_ID}>"
             )
 
+# -------------------------------
+# Auto-delete old bot messages
+# -------------------------------
+async def auto_delete_old_bot_messages():
+    await client.wait_until_ready()
+    while not client.is_closed():
+        now = datetime.utcnow()
+        for channel_id in BOT_AUTO_DELETE_CHANNEL_IDS:
+            channel = client.get_channel(channel_id)
+            if not channel:
+                continue
+
+            async for msg in channel.history(limit=None, oldest_first=True):
+                if not msg.author.bot:
+                    continue
+
+                age = (now - msg.created_at).total_seconds()
+                if age >= DELETE_BOT_MESSAGES_AFTER:
+                    try:
+                        await msg.delete()
+                        await asyncio.sleep(0.5)
+                    except:
+                        pass
+
+        await asyncio.sleep(15)
+
 # ================================
 # EVENTS
 # ================================
@@ -152,27 +217,13 @@ async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     client.loop.create_task(live_wins_loop())
     client.loop.create_task(daily_cleanup_task())
+    client.loop.create_task(auto_delete_old_bot_messages())
 
 @client.event
 async def on_message(message):
-
-    # ✅ AUTO-DELETE BOT / WEBHOOK MESSAGES (BOTH CHANNELS)
-    if (
-        message.author.bot
-        and message.author.id != client.user.id
-        and message.channel.id in BOT_AUTO_DELETE_CHANNEL_IDS
-    ):
-        await asyncio.sleep(DELETE_BOT_MESSAGES_AFTER)
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-
     if message.author.bot:
         return
 
-    # User win announcements (only in main auto channel)
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
