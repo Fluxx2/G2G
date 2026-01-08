@@ -1,28 +1,15 @@
-"""
-Wins Bot Features:
-
-1. Live Wins Counter
-2. Daily Cleanup (IST Midnight)
-3. User Milestone Announcements
-4. Reaction-Based Deletion
-5. Timezone Handling (IST)
-6. Slash Command
-7. Stability and Safety
-"""
-
 import discord
 import asyncio
 import os
-from datetime import datetime, timedelta
-import pytz
 from discord import app_commands
+from datetime import datetime, timedelta, timezone
+import pytz
+import re
 
 # ================================
 # CONFIG
 # ================================
-
 GUILD_ID = 1442370324858667041
-
 AUTO_CHANNEL_ID = 1442370325831487608
 SECOND_AUTO_CHANNEL_ID = 1449692284596523068
 LOG_CHANNEL_ID = 1443852961502466090
@@ -37,7 +24,6 @@ IST = pytz.timezone("Asia/Kolkata")
 # ================================
 # BOT SETUP
 # ================================
-
 TOKEN = os.getenv("DISCORD_TOKEN_2")
 if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN_2 not set")
@@ -49,9 +35,8 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-last_win_message = {}
+last_win_message = {}  # track last achievement announcement per user
 live_total_message = None
-
 daily_deleted_count = 0
 last_reset_date = datetime.now(IST).date()
 
@@ -66,7 +51,6 @@ def ensure_daily_bucket():
         daily_deleted_count = 0
         last_reset_date = today
 
-
 async def count_user_messages_today(channel, user):
     start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
@@ -75,7 +59,6 @@ async def count_user_messages_today(channel, user):
             count += 1
     return count
 
-
 async def count_total_messages_today(channel):
     start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
@@ -83,7 +66,6 @@ async def count_total_messages_today(channel):
         if not msg.author.bot:
             count += 1
     return count
-
 
 async def cleanup_channel(channel):
     global daily_deleted_count
@@ -96,7 +78,6 @@ async def cleanup_channel(channel):
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
-
         if msg.created_at.astimezone(IST) < cutoff:
             try:
                 await msg.delete()
@@ -107,28 +88,22 @@ async def cleanup_channel(channel):
                 pass
         else:
             break
-
     return deleted
-
 
 async def update_live_total():
     global live_total_message
-
     log = client.get_channel(LOG_CHANNEL_ID)
     channel = client.get_channel(AUTO_CHANNEL_ID)
     if not log or not channel:
         return
-
     total = await count_total_messages_today(channel)
     content = f"🏆 **Live Wins Today:** `{total}`"
-
     if live_total_message:
         try:
             await live_total_message.edit(content=content)
             return
         except:
             live_total_message = None
-
     live_total_message = await log.send(content)
 
 # ================================
@@ -140,7 +115,6 @@ async def live_wins_loop():
     while not client.is_closed():
         await update_live_total()
         await asyncio.sleep(60)
-
 
 async def daily_cleanup_task():
     global live_total_message
@@ -154,7 +128,6 @@ async def daily_cleanup_task():
         next_midnight = (now + timedelta(days=1)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
-
         await asyncio.sleep((next_midnight - now).total_seconds())
 
         ensure_daily_bucket()
@@ -187,12 +160,12 @@ async def on_ready():
     client.loop.create_task(live_wins_loop())
     client.loop.create_task(daily_cleanup_task())
 
-
 @client.event
 async def on_message(message):
     if message.author.bot:
         return
 
+    # 🔹 User achievement tracking (every 10 messages)
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
@@ -203,18 +176,15 @@ async def on_message(message):
                     await old.delete()
                 except:
                     pass
-
             last_win_message[message.author.id] = await announce.send(
                 f"{message.author.mention} **wins done today so far ({user_total})**"
             )
-
 
 @client.event
 async def on_reaction_add(reaction, user):
     try:
         if (
             not user.bot
-            and reaction.message.channel.id == AUTO_CHANNEL_ID
             and reaction.message.author.id == TARGET_USER_ID
             and isinstance(reaction.emoji, discord.Emoji)
             and reaction.emoji.id == TARGET_EMOJI_ID
@@ -230,14 +200,12 @@ async def on_reaction_add(reaction, user):
 
 @tree.command(
     name="daily_count",
-    description="Delete messages before today (IST)",
+    description="Delete messages older than 24h",
     guild=discord.Object(id=GUILD_ID)
 )
 async def daily_count(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-
     deleted = await cleanup_channel(interaction.channel)
-
     log = client.get_channel(LOG_CHANNEL_ID)
     if log:
         await log.send(
@@ -245,20 +213,18 @@ async def daily_count(interaction: discord.Interaction):
             f"📍 <#{interaction.channel.id}>\n"
             f"**🏆 todays win {deleted}**"
         )
-
-    await interaction.followup.send(
-        f"**🏆 todays win {deleted}**",
-        ephemeral=True
-    )
+    await interaction.followup.send(f"**🏆 todays win {deleted}**", ephemeral=True)
 
 
+# 🔹 NEW: /reset_now — forces daily IST reset
 @tree.command(
     name="reset_now",
-    description="Force delete messages older than 24h (oldest → newest) and log count",
+    description="Force delete messages older than 24h and update daily win counts",
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
+    ensure_daily_bucket()
 
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
@@ -268,22 +234,25 @@ async def reset_now(interaction: discord.Interaction):
 
     deleted_count = 0
 
-    # Delete messages oldest → newest, only those older than 24h
+    # Delete oldest → newest messages older than 24h
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
-
         if msg.created_at.astimezone(IST) < cutoff:
             try:
                 await msg.delete()
                 deleted_count += 1
+                daily_deleted_count += 1
                 await asyncio.sleep(0.7)
             except:
                 pass
         else:
-            break  # stop once we reach messages newer than 24h
+            break
 
-    # Send the final deleted count to log channel
+    # Update live total after reset
+    await update_live_total()
+
+    # Log
     if log:
         await log.send(
             f"⚡ **Manual Reset Executed**\n"
@@ -295,13 +264,7 @@ async def reset_now(interaction: discord.Interaction):
         ephemeral=True
     )
 
-
-
 # ================================
 # RUN
 # ================================
-
 client.run(TOKEN)
-
-
-
