@@ -59,7 +59,7 @@ async def toggle_code_emoji(source_message_id: int):
         except:
             pass
 
-        await asyncio.sleep(15)
+        await asyncio.sleep(19)
 
 # ================================
 # EVENTS
@@ -133,3 +133,4 @@ async def on_message_delete(message):
 # RUN
 # ================================
 client.run(TOKEN)
+
