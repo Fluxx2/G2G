@@ -57,7 +57,7 @@ daily_deleted_count = 0
 # HELPERS
 # ================================
 async def count_user_messages_today(channel, user):
-    start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = datetime.now(IST).replace(hour=1, minute=41, second=50, microsecond=0)
     count = 0
     async for msg in channel.history(limit=None, after=start):
         if not msg.author.bot and msg.author.id == user.id:
@@ -241,5 +241,6 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
 
