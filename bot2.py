@@ -2,7 +2,7 @@
 Wins Bot Features:
 
 1. Live Wins Counter
-2. Daily Cleanup (IST Midnight)
+2. Daily Cleanup (IST Midnight) — counts deleted messages correctly
 3. User Milestone Announcements
 4. Reaction-Based Deletion
 5. Timezone Handling (IST)
@@ -13,7 +13,7 @@ Wins Bot Features:
 import discord
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 from discord import app_commands
 
@@ -50,6 +50,9 @@ tree = app_commands.CommandTree(client)
 last_win_message = {}
 live_total_message = None
 
+# stores deleted count for daily reset
+daily_deleted_count = 0
+
 # ================================
 # HELPERS
 # ================================
@@ -62,34 +65,36 @@ async def count_user_messages_today(channel, user):
     return count
 
 async def count_total_messages_today(channel):
-    start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = datetime.now(IST).replace(hour=1, minute=26, second=40, microsecond=0)
     count = 0
     async for msg in channel.history(limit=None, after=start):
         if not msg.author.bot:
             count += 1
     return count
 
-async def cleanup_channel(channel):
-    ist_midnight = datetime.now(IST).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+async def cleanup_channel_last_24h(channel):
+    """
+    Deletes HUMAN messages from the last 24 hours
+    Counts deletions from oldest → newest
+    """
+    global daily_deleted_count
 
-    deleted = 0
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=24)
+
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
 
-        if msg.created_at.astimezone(IST) < ist_midnight:
-            try:
-                await msg.delete()
-                deleted += 1
-                await asyncio.sleep(0.7)
-            except:
-                pass
-        else:
-            break
+        if msg.created_at < cutoff:
+            continue
 
-    return deleted
+        try:
+            await msg.delete()
+            daily_deleted_count += 1
+            await asyncio.sleep(0.6)
+        except:
+            pass
 
 async def update_live_total():
     global live_total_message
@@ -121,6 +126,8 @@ async def live_wins_loop():
         await asyncio.sleep(60)
 
 async def daily_cleanup_task():
+    global daily_deleted_count, live_total_message
+
     await client.wait_until_ready()
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
@@ -132,21 +139,28 @@ async def daily_cleanup_task():
         )
         await asyncio.sleep((next_midnight - now).total_seconds())
 
+        # delete live counter message
         if live_total_message:
             try:
                 await live_total_message.delete()
             except:
                 pass
+            live_total_message = None
 
-        await cleanup_channel(channel)
-        await update_live_total()
+        # reset count before cleanup
+        daily_deleted_count = 0
 
+        # cleanup last 24h messages
+        await cleanup_channel_last_24h(channel)
+
+        # log correct deleted count
         if log:
-            total = await count_total_messages_today(channel)
             await log.send(
-                f"🌙 **Auto Daily Cleanup (IST Midnight)**\n"
-                f"**🏆 todays win `{total}` in** <#{AUTO_CHANNEL_ID}>"
+                f"🌙 **Auto Daily Cleanup (IST Midnight)**\n" 
+                f"**🏆 todays win {total} in** <#{AUTO_CHANNEL_ID}>"
             )
+
+        daily_deleted_count = 0
 
 # ================================
 # EVENTS
@@ -197,25 +211,31 @@ async def on_reaction_add(reaction, user):
 # ================================
 @tree.command(
     name="daily_count",
-    description="Delete messages before today (IST)",
+    description="Delete messages from last 24 hours",
     guild=discord.Object(id=GUILD_ID)
 )
 async def daily_count(interaction: discord.Interaction):
+    global daily_deleted_count
+
     await interaction.response.defer(ephemeral=True)
-    deleted = await cleanup_channel(interaction.channel)
+    daily_deleted_count = 0
+
+    await cleanup_channel_last_24h(interaction.channel)
 
     log = client.get_channel(LOG_CHANNEL_ID)
     if log:
         await log.send(
-            f"🧹 **Manual Daily Cleanup**\n"
+            f"🧹 **Manual Cleanup**\n"
             f"📍 <#{interaction.channel.id}>\n"
-            f"**🏆 todays win {deleted}**"
+            f"🗑️ **Deleted `{daily_deleted_count}` messages**"
         )
 
     await interaction.followup.send(
-        f"**🏆 todays win {deleted}**",
+        f"🗑️ **Deleted `{daily_deleted_count}` messages**",
         ephemeral=True
     )
+
+    daily_deleted_count = 0
 
 # ================================
 # RUN
