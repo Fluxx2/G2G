@@ -2,18 +2,10 @@
 Wins Bot Features:
 
 1. Live Wins Counter:
-   - Tracks all non-bot messages in AUTO_CHANNEL_ID.
-   - Updates a live message in LOG_CHANNEL_ID every 60 seconds showing total wins today.
 
 2. Daily Cleanup:
-   - Deletes all user messages in AUTO_CHANNEL_ID older than today (IST midnight).
-   - Resets the live wins message.
-   - Posts a daily cleanup summary in LOG_CHANNEL_ID.
 
-3. Auto-Delete Bot Messages:
-   - Deletes any bot message in AUTO_CHANNEL_ID and SECOND_AUTO_CHANNEL_ID
-     that is older than 225 seconds.
-   - Runs continuously every 15 seconds to catch old messages.
+3. Auto-Delete Bot Messages: in both channels
 
 4. User Milestone Announcements:
    - Tracks per-user daily messages in AUTO_CHANNEL_ID.
@@ -28,12 +20,8 @@ Wins Bot Features:
    - All daily resets, counts, and cleanup tasks operate in IST (Asia/Kolkata).
 
 7. Slash Command:
-   - /daily_count: manually delete messages before today and log the result.
 
 8. Stability and Safety:
-   - Uses try/except to prevent crashes.
-   - Skips bot messages where needed.
-   - Async tasks prevent blocking.
 
 """
 
@@ -63,7 +51,7 @@ TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
-DELETE_BOT_MESSAGES_AFTER = 225  # seconds
+DELETE_BOT_MESSAGES_AFTER = 220  # seconds
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -283,3 +271,4 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
