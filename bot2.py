@@ -52,7 +52,6 @@ tree = app_commands.CommandTree(client)
 last_win_message = {}
 live_total_message = None
 
-# 🔒 keeps full delete history safely per day
 daily_deleted_count = 0
 last_reset_date = datetime.now(IST).date()
 
@@ -153,7 +152,7 @@ async def daily_cleanup_task():
     while True:
         now = datetime.now(IST)
         next_midnight = (now + timedelta(days=1)).replace(
-            hour=1, minute=50, second=0, microsecond=0
+            hour=0, minute=0, second=0, microsecond=0
         )
 
         await asyncio.sleep((next_midnight - now).total_seconds())
@@ -226,7 +225,7 @@ async def on_reaction_add(reaction, user):
         pass
 
 # ================================
-# SLASH COMMAND
+# SLASH COMMANDS
 # ================================
 
 @tree.command(
@@ -249,6 +248,45 @@ async def daily_count(interaction: discord.Interaction):
 
     await interaction.followup.send(
         f"**🏆 todays win {deleted}**",
+        ephemeral=True
+    )
+
+
+@tree.command(
+    name="reset_now",
+    description="Force reset and cleanup immediately",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def reset_now(interaction: discord.Interaction):
+    global daily_deleted_count, live_total_message
+
+    await interaction.response.defer(ephemeral=True)
+
+    ensure_daily_bucket()
+    daily_deleted_count = 0
+
+    channel = client.get_channel(AUTO_CHANNEL_ID)
+    log = client.get_channel(LOG_CHANNEL_ID)
+
+    if live_total_message:
+        try:
+            await live_total_message.delete()
+        except:
+            pass
+        live_total_message = None
+
+    await cleanup_channel(channel)
+
+    if log:
+        await log.send(
+            f"⚡ **Manual Reset Triggered**\n"
+            f"**🏆 todays win {daily_deleted_count} in** <#{AUTO_CHANNEL_ID}>"
+        )
+
+    await update_live_total()
+
+    await interaction.followup.send(
+        "✅ **Reset completed successfully**",
         ephemeral=True
     )
 
