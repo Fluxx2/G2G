@@ -2,9 +2,8 @@ import discord
 import asyncio
 import os
 from discord import app_commands
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import pytz
-import re
 
 # ================================
 # CONFIG
@@ -68,17 +67,20 @@ async def count_total_messages_today(channel):
     return count
 
 async def cleanup_channel(channel):
+    """Delete messages sent in the last 24 hours (IST)."""
     global daily_deleted_count
     ensure_daily_bucket()
 
     now = datetime.now(IST)
-    cutoff = now - timedelta(hours=24)
+    cutoff = now - timedelta(hours=24)  # 24 hours ago
 
     deleted = 0
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
-        if msg.created_at.astimezone(IST) < cutoff:
+
+        msg_time = msg.created_at.astimezone(IST)
+        if cutoff <= msg_time <= now:
             try:
                 await msg.delete()
                 deleted += 1
@@ -86,8 +88,11 @@ async def cleanup_channel(channel):
                 await asyncio.sleep(0.7)
             except:
                 pass
+        elif msg_time > now:
+            break  # future messages → skip
         else:
-            break
+            continue  # older than 24h → skip
+
     return deleted
 
 async def update_live_total():
@@ -139,6 +144,7 @@ async def daily_cleanup_task():
                 pass
             live_total_message = None
 
+        # Delete only messages sent in past 24h
         await cleanup_channel(channel)
 
         if log:
@@ -200,7 +206,7 @@ async def on_reaction_add(reaction, user):
 
 @tree.command(
     name="daily_count",
-    description="Delete messages older than 24h",
+    description="Delete messages sent in the past 24h",
     guild=discord.Object(id=GUILD_ID)
 )
 async def daily_count(interaction: discord.Interaction):
@@ -215,11 +221,10 @@ async def daily_count(interaction: discord.Interaction):
         )
     await interaction.followup.send(f"**🏆 todays win {deleted}**", ephemeral=True)
 
-
-# 🔹 NEW: /reset_now — forces daily IST reset
+# 🔹 /reset_now — forces daily IST reset for messages in past 24h
 @tree.command(
     name="reset_now",
-    description="Force delete messages older than 24h and update daily win counts",
+    description="Force delete messages sent in the past 24h and update daily win counts",
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
@@ -229,25 +234,7 @@ async def reset_now(interaction: discord.Interaction):
     channel = client.get_channel(AUTO_CHANNEL_ID)
     log = client.get_channel(LOG_CHANNEL_ID)
 
-    now = datetime.now(IST)
-    cutoff = now - timedelta(hours=24)
-
-    deleted_count = 0
-
-    # Delete oldest → newest messages older than 24h
-    async for msg in channel.history(limit=None, oldest_first=True):
-        if msg.author.bot:
-            continue
-        if msg.created_at.astimezone(IST) < cutoff:
-            try:
-                await msg.delete()
-                deleted_count += 1
-                daily_deleted_count += 1
-                await asyncio.sleep(0.7)
-            except:
-                pass
-        else:
-            break
+    deleted_count = await cleanup_channel(channel)
 
     # Update live total after reset
     await update_live_total()
@@ -260,7 +247,7 @@ async def reset_now(interaction: discord.Interaction):
         )
 
     await interaction.followup.send(
-        f"✅ Reset complete — `{deleted_count}` messages deleted",
+        f"✅ Reset complete — `{deleted_count}` messages deleted (past 24h)",
         ephemeral=True
     )
 
