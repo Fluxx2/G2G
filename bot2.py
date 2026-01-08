@@ -188,7 +188,7 @@ async def daily_cleanup_task():
 async def auto_delete_old_bot_messages():
     await client.wait_until_ready()
     while not client.is_closed():
-        now = datetime.utcnow()
+        now = datetime.now(tz=pytz.UTC)  # ✅ offset-aware UTC
         for channel_id in BOT_AUTO_DELETE_CHANNEL_IDS:
             channel = client.get_channel(channel_id)
             if not channel:
@@ -198,11 +198,12 @@ async def auto_delete_old_bot_messages():
                 if not msg.author.bot:
                     continue
 
+                # Check age in seconds
                 age = (now - msg.created_at).total_seconds()
                 if age >= DELETE_BOT_MESSAGES_AFTER:
                     try:
                         await msg.delete()
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.5)  # small delay to avoid rate limits
                     except:
                         pass
 
