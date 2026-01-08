@@ -258,8 +258,6 @@ async def daily_count(interaction: discord.Interaction):
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
-    global live_total_message
-
     await interaction.response.defer(ephemeral=True)
 
     channel = client.get_channel(AUTO_CHANNEL_ID)
@@ -270,7 +268,7 @@ async def reset_now(interaction: discord.Interaction):
 
     deleted_count = 0
 
-    # delete oldest → newest, only msgs older than 24h
+    # Delete messages oldest → newest, only those older than 24h
     async for msg in channel.history(limit=None, oldest_first=True):
         if msg.author.bot:
             continue
@@ -283,24 +281,14 @@ async def reset_now(interaction: discord.Interaction):
             except:
                 pass
         else:
-            break  # stop once we reach newer messages
+            break  # stop once we reach messages newer than 24h
 
-    # remove live counter message
-    if live_total_message:
-        try:
-            await live_total_message.delete()
-        except:
-            pass
-        live_total_message = None
-
-    # send FINAL count to log channel
+    # Send the final deleted count to log channel
     if log:
         await log.send(
             f"⚡ **Manual Reset Executed**\n"
             f"**🏆 todays win {deleted_count} in** <#{AUTO_CHANNEL_ID}>"
         )
-
-    await update_live_total()
 
     await interaction.followup.send(
         f"✅ Reset complete — `{deleted_count}` messages deleted",
@@ -308,10 +296,12 @@ async def reset_now(interaction: discord.Interaction):
     )
 
 
+
 # ================================
 # RUN
 # ================================
 
 client.run(TOKEN)
+
 
 
