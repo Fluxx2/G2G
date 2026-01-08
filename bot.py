@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 CHANNEL_ID = 1442370325831487608
 CODE_COUNTDOWN_SECONDS = 240
 
+NO_TOGGLE_USER_IDS = {
+    1252645184777359391,
+    906546198754775082
+}
+
 # ================================
 # BOT SETUP
 # ================================
@@ -22,13 +27,8 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-# message_id -> mirrored message
 mirrored_messages = {}
-
-# message_id -> code data
 code_data = {}
-
-# message_id -> toggle task
 toggle_tasks = {}
 
 # ================================
@@ -81,7 +81,14 @@ async def on_message(message):
         return
 
     code = match.group(0)
-    timer = discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
+
+    is_no_toggle_user = message.author.id in NO_TOGGLE_USER_IDS
+
+    timer = (
+        discord_relative_timestamp(CODE_COUNTDOWN_SECONDS)
+        if not is_no_toggle_user
+        else ""
+    )
 
     code_data[message.id] = {
         "code": code,
@@ -92,9 +99,11 @@ async def on_message(message):
     content = build_content(message.id)
     mirrored_messages[message.id] = await message.channel.send(content)
 
-    toggle_tasks[message.id] = client.loop.create_task(
-        toggle_code_emoji(message.id)
-    )
+    # 🚫 DO NOT START TOGGLE FOR SPECIFIC USERS
+    if not is_no_toggle_user:
+        toggle_tasks[message.id] = client.loop.create_task(
+            toggle_code_emoji(message.id)
+        )
 
 @client.event
 async def on_message_edit(before, after):
@@ -133,5 +142,3 @@ async def on_message_delete(message):
 # RUN
 # ================================
 client.run(TOKEN)
-
-
