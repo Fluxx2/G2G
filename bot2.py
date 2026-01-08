@@ -51,7 +51,7 @@ TARGET_USER_ID = 906546198754775082
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
-DELETE_BOT_MESSAGES_AFTER = 220  # seconds
+DELETE_BOT_MESSAGES_AFTER = 225  # seconds
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -271,4 +271,5 @@ async def daily_count(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
