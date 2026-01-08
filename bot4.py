@@ -13,9 +13,9 @@ CODE_COUNTDOWN_SECONDS = 240
 # ================================
 # BOT SETUP
 # ================================
-TOKEN = os.getenv("DISCORD_TOKEN_4")  # use a different env var
+TOKEN = os.getenv("DISCORD_TOKEN")  # use a different env var
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN_4 not set")
+    raise RuntimeError("DISCORD_TOKEN not set")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -133,4 +133,5 @@ async def on_message_delete(message):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
