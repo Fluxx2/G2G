@@ -72,7 +72,7 @@ def generate_all_variants(code: str) -> list[str]:
 def build_content(source_id: int) -> str:
     data = code_data[source_id]
 
-    codes = [f"`     {c}     `\n" for c in data["codes"]]
+    codes = [f"`     {c}     `\n #" for c in data["codes"]]
     header = "# " + " ".join(codes)
 
     if data["only_code"]:
@@ -201,4 +201,5 @@ async def on_message_delete(message):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
