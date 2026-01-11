@@ -74,9 +74,9 @@ def build_content(source_id: int) -> str:
 
     lines = []
     for idx, code in enumerate(data["codes"], start=1):
-        lines.append(f"# {idx}) `     {code}     `")
+        lines.append(f"# {idx}) `   {code}   `")
 
-    header = "\n".join(lines)
+    header = " ".join(lines)
 
     if data["only_code"]:
         return header
@@ -205,6 +205,7 @@ async def on_message_delete(message):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
 
 
