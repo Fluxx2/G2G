@@ -75,7 +75,7 @@ def build_content(source_id: int) -> str:
 
     # If only ONE code → no numbering
     if len(codes) == 1:
-        header = f"# `   {codes[0]}   `"
+        header = f"# `     {codes[0]}     `"
     else:
         lines = []
         for idx, code in enumerate(codes, start=1):
@@ -210,6 +210,7 @@ async def on_message_delete(message):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
 
 
