@@ -14,7 +14,12 @@ SECOND_AUTO_CHANNEL_ID = 1449692284596523068
 LOG_CHANNEL_ID = 1443852961502466090
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
-TARGET_USER_ID = 906546198754775082
+TARGET_USER_IDS = {
+    906546198754775082,
+    1252645184777359391
+    # add more user IDs here
+}
+
 TARGET_EMOJI_ID = 1444022259789467709
 REACTION_THRESHOLD = 4
 
@@ -206,7 +211,7 @@ async def on_reaction_add(reaction, user):
     try:
         if (
             not user.bot
-            and reaction.message.author.id == TARGET_USER_ID
+            and reaction.message.author.id in TARGET_USER_IDS
             and isinstance(reaction.emoji, discord.Emoji)
             and reaction.emoji.id == TARGET_EMOJI_ID
             and reaction.count >= REACTION_THRESHOLD
