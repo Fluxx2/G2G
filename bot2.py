@@ -20,6 +20,14 @@ REACTION_THRESHOLD = 4
 
 IST = pytz.timezone("Asia/Kolkata")
 
+# ✅ Allowed roles
+ALLOWED_ROLE_IDS = {
+    1442370325215182852,
+    1442370325215182851,
+    1442370325215182849,
+    1442370325215182848,
+}
+
 # ================================
 # BOT SETUP
 # ================================
@@ -34,7 +42,7 @@ intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-last_win_message = {}  # track last achievement announcement per user
+last_win_message = {}
 live_total_message = None
 daily_deleted_count = 0
 last_reset_date = datetime.now(IST).date()
@@ -42,6 +50,17 @@ last_reset_date = datetime.now(IST).date()
 # ================================
 # HELPERS
 # ================================
+
+def is_authorized(interaction: discord.Interaction) -> bool:
+    member = interaction.user
+
+    if interaction.guild and member.id == interaction.guild.owner_id:
+        return True
+
+    if member.guild_permissions.administrator:
+        return True
+
+    return any(role.id in ALLOWED_ROLE_IDS for role in member.roles)
 
 def ensure_daily_bucket():
     global daily_deleted_count, last_reset_date
@@ -67,12 +86,11 @@ async def count_total_messages_today(channel):
     return count
 
 async def cleanup_channel(channel):
-    """Delete messages sent in the last 24 hours (IST)."""
     global daily_deleted_count
     ensure_daily_bucket()
 
     now = datetime.now(IST)
-    cutoff = now - timedelta(hours=24)  # 24 hours ago
+    cutoff = now - timedelta(hours=24)
 
     deleted = 0
     async for msg in channel.history(limit=None, oldest_first=True):
@@ -88,10 +106,6 @@ async def cleanup_channel(channel):
                 await asyncio.sleep(0.7)
             except:
                 pass
-        elif msg_time > now:
-            break  # future messages → skip
-        else:
-            continue  # older than 24h → skip
 
     return deleted
 
@@ -101,14 +115,17 @@ async def update_live_total():
     channel = client.get_channel(AUTO_CHANNEL_ID)
     if not log or not channel:
         return
+
     total = await count_total_messages_today(channel)
     content = f"🏆 **Live Wins Today:** `{total}`"
+
     if live_total_message:
         try:
             await live_total_message.edit(content=content)
             return
         except:
             live_total_message = None
+
     live_total_message = await log.send(content)
 
 # ================================
@@ -144,7 +161,6 @@ async def daily_cleanup_task():
                 pass
             live_total_message = None
 
-        # Delete only messages sent in past 24h
         await cleanup_channel(channel)
 
         if log:
@@ -171,7 +187,6 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # 🔹 User achievement tracking (every 10 messages)
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
         if user_total > 0 and user_total % 10 == 0:
@@ -201,7 +216,7 @@ async def on_reaction_add(reaction, user):
         pass
 
 # ================================
-# SLASH COMMANDS
+# SLASH COMMANDS (RESTRICTED)
 # ================================
 
 @tree.command(
@@ -210,24 +225,39 @@ async def on_reaction_add(reaction, user):
     guild=discord.Object(id=GUILD_ID)
 )
 async def daily_count(interaction: discord.Interaction):
+    if not is_authorized(interaction):
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True
+        )
+        return
+
     await interaction.response.defer(ephemeral=True)
     deleted = await cleanup_channel(interaction.channel)
     log = client.get_channel(LOG_CHANNEL_ID)
+
     if log:
         await log.send(
             f"🧹 **Manual Daily Cleanup**\n"
             f"📍 <#{interaction.channel.id}>\n"
             f"**🏆 todays win {deleted}**"
         )
+
     await interaction.followup.send(f"**🏆 todays win {deleted}**", ephemeral=True)
 
-# 🔹 /reset_now — forces daily IST reset for messages in past 24h
 @tree.command(
     name="reset_now",
     description="Force delete messages sent in the past 24h and update daily win counts",
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
+    if not is_authorized(interaction):
+        await interaction.response.send_message(
+            "❌ You do not have permission to use this command.",
+            ephemeral=True
+        )
+        return
+
     await interaction.response.defer(ephemeral=True)
     ensure_daily_bucket()
 
@@ -235,11 +265,8 @@ async def reset_now(interaction: discord.Interaction):
     log = client.get_channel(LOG_CHANNEL_ID)
 
     deleted_count = await cleanup_channel(channel)
-
-    # Update live total after reset
     await update_live_total()
 
-    # Log
     if log:
         await log.send(
             f"⚡ **Manual Reset Executed**\n"
