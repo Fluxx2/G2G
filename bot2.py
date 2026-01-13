@@ -4,6 +4,7 @@ import os
 from discord import app_commands
 from datetime import datetime, timedelta
 import pytz
+from discord.errors import DiscordServerError
 
 # ================================
 # CONFIG
@@ -17,7 +18,6 @@ WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 TARGET_USER_IDS = {
     906546198754775082,
     1252645184777359391
-    # add more user IDs here
 }
 
 TARGET_EMOJI_ID = 1444022259789467709
@@ -25,7 +25,6 @@ REACTION_THRESHOLD = 4
 
 IST = pytz.timezone("Asia/Kolkata")
 
-# ✅ Allowed roles
 ALLOWED_ROLE_IDS = {
     1442370325215182852,
     1442370325215182851,
@@ -77,17 +76,23 @@ def ensure_daily_bucket():
 async def count_user_messages_today(channel, user):
     start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
-    async for msg in channel.history(limit=None, after=start):
-        if not msg.author.bot and msg.author.id == user.id:
-            count += 1
+    try:
+        async for msg in channel.history(limit=None, after=start):
+            if not msg.author.bot and msg.author.id == user.id:
+                count += 1
+    except DiscordServerError:
+        pass
     return count
 
 async def count_total_messages_today(channel):
     start = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
     count = 0
-    async for msg in channel.history(limit=None, after=start):
-        if not msg.author.bot:
-            count += 1
+    try:
+        async for msg in channel.history(limit=None, after=start):
+            if not msg.author.bot:
+                count += 1
+    except DiscordServerError:
+        pass
     return count
 
 async def cleanup_channel(channel):
@@ -98,19 +103,22 @@ async def cleanup_channel(channel):
     cutoff = now - timedelta(hours=24)
 
     deleted = 0
-    async for msg in channel.history(limit=None, oldest_first=True):
-        if msg.author.bot:
-            continue
+    try:
+        async for msg in channel.history(limit=None, oldest_first=True):
+            if msg.author.bot:
+                continue
 
-        msg_time = msg.created_at.astimezone(IST)
-        if cutoff <= msg_time <= now:
-            try:
-                await msg.delete()
-                deleted += 1
-                daily_deleted_count += 1
-                await asyncio.sleep(0.7)
-            except:
-                pass
+            msg_time = msg.created_at.astimezone(IST)
+            if cutoff <= msg_time <= now:
+                try:
+                    await msg.delete()
+                    deleted += 1
+                    daily_deleted_count += 1
+                    await asyncio.sleep(0.7)
+                except:
+                    pass
+    except DiscordServerError:
+        pass
 
     return deleted
 
@@ -121,7 +129,11 @@ async def update_live_total():
     if not log or not channel:
         return
 
-    total = await count_total_messages_today(channel)
+    try:
+        total = await count_total_messages_today(channel)
+    except DiscordServerError:
+        return
+
     content = f"🏆 **Live Wins Today:** `{total}`"
 
     if live_total_message:
@@ -140,7 +152,13 @@ async def update_live_total():
 async def live_wins_loop():
     await client.wait_until_ready()
     while not client.is_closed():
-        await update_live_total()
+        try:
+            await update_live_total()
+        except DiscordServerError:
+            pass
+        except Exception:
+            pass
+
         await asyncio.sleep(60)
 
 async def daily_cleanup_task():
@@ -221,7 +239,7 @@ async def on_reaction_add(reaction, user):
         pass
 
 # ================================
-# SLASH COMMANDS (RESTRICTED)
+# SLASH COMMANDS
 # ================================
 
 @tree.command(
@@ -252,7 +270,7 @@ async def daily_count(interaction: discord.Interaction):
 
 @tree.command(
     name="reset_now",
-    description="Force delete messages sent in the past 24h and update daily win counts",
+    description="Force delete messages sent in the past 24h",
     guild=discord.Object(id=GUILD_ID)
 )
 async def reset_now(interaction: discord.Interaction):
