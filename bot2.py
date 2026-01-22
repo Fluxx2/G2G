@@ -15,9 +15,12 @@ SECOND_AUTO_CHANNEL_ID = 1449692284596523068
 LOG_CHANNEL_ID = 1443852961502466090
 WINS_ANNOUNCE_CHANNEL_ID = 1457687458954350783
 
+# Include webhook IDs here too
 TARGET_USER_IDS = {
-    906546198754775082,
-    1252645184777359391
+    906546198754775082,     # human
+    1252645184777359391,    # human
+    1463699794286346315,    # example webhook
+    222222222222222222,     # example webhook
 }
 
 TARGET_EMOJI_ID = 1444022259789467709
@@ -78,8 +81,13 @@ async def count_user_messages_today(channel, user):
     count = 0
     try:
         async for msg in channel.history(limit=None, after=start):
-            if not msg.author.bot and msg.author.id == user.id:
-                count += 1
+            # Include webhooks
+            if msg.author.bot:
+                if msg.webhook_id and msg.author.id == user.id:
+                    count += 1
+            else:
+                if msg.author.id == user.id:
+                    count += 1
     except DiscordServerError:
         pass
     return count
@@ -89,7 +97,10 @@ async def count_total_messages_today(channel):
     count = 0
     try:
         async for msg in channel.history(limit=None, after=start):
-            if not msg.author.bot:
+            if msg.author.bot:
+                if msg.webhook_id:
+                    count += 1
+            else:
                 count += 1
     except DiscordServerError:
         pass
@@ -105,7 +116,8 @@ async def cleanup_channel(channel):
     deleted = 0
     try:
         async for msg in channel.history(limit=None, oldest_first=True):
-            if msg.author.bot:
+            # Ignore normal bots but NOT webhooks
+            if msg.author.bot and not msg.webhook_id:
                 continue
 
             msg_time = msg.created_at.astimezone(IST)
@@ -207,8 +219,9 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    if message.author.bot:
-        return
+    # Include webhooks in message handling
+    if message.author.bot and not message.webhook_id:
+        return  # ignore regular bots
 
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
@@ -220,16 +233,17 @@ async def on_message(message):
                     await old.delete()
                 except:
                     pass
+
+            display_name = message.author.display_name if not message.webhook_id else message.author.name
             last_win_message[message.author.id] = await announce.send(
-                f"{message.author.mention} **wins done today so far ({user_total})**"
+                f"**{display_name} wins done today so far ({user_total})**"
             )
 
 @client.event
 async def on_reaction_add(reaction, user):
     try:
         if (
-            not user.bot
-            and reaction.message.author.id in TARGET_USER_IDS
+            reaction.message.author.id in TARGET_USER_IDS
             and isinstance(reaction.emoji, discord.Emoji)
             and reaction.emoji.id == TARGET_EMOJI_ID
             and reaction.count >= REACTION_THRESHOLD
