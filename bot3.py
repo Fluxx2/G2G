@@ -14,7 +14,7 @@ REACTIONS = [
     "🟢","🟢","🟢",
     "🟡","🟡","🟡",
     "⚠️","‼️","🚨",
-    "🚫"
+    "🔚"
 ]
 
 # Webhook IDs to react to
@@ -75,3 +75,4 @@ if __name__ == "__main__":
         raise RuntimeError("DISCORD_TOKEN_3 not set")
 
     client.run(TOKEN)
+
