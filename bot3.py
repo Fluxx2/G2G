@@ -17,6 +17,12 @@ REACTIONS = [
     "🚫"
 ]
 
+# Webhook IDs to react to
+TARGET_WEBHOOK_IDS = {
+    1463699794286346315,  # Example webhook ID
+    222222222222222222,    # Example webhook ID
+}
+
 # ================================
 # BOT SETUP
 # ================================
@@ -56,13 +62,10 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # Ignore all bots
-    if message.author.bot:
-        return
-
-    # Only react in the configured channel
-    if message.channel.id == REACTION_CHANNEL_ID:
-        client.loop.create_task(reaction_countdown(message))
+    # Only react to target webhook messages
+    if message.webhook_id and message.webhook_id in TARGET_WEBHOOK_IDS:
+        if message.channel.id == REACTION_CHANNEL_ID:
+            client.loop.create_task(reaction_countdown(message))
 
 # ================================
 # RUN
