@@ -20,7 +20,7 @@ REACTIONS = [
 # Webhook IDs to react to
 TARGET_WEBHOOK_IDS = {
     1463699794286346315,  # Example webhook ID
-    222222222222222222,    # Example webhook ID
+    222222222222222222,  # Example webhook ID
 }
 
 # ================================
@@ -29,7 +29,7 @@ TARGET_WEBHOOK_IDS = {
 TOKEN = os.getenv("DISCORD_TOKEN_3")
 
 intents = discord.Intents.default()
-intents.message_content = True  # reactions do NOT require reaction intent
+intents.message_content = True
 
 client = discord.Client(intents=intents)
 
@@ -42,6 +42,9 @@ async def reaction_countdown(message):
 
     for i in range(steps):
         try:
+            # 🛑 stop if message was deleted
+            await message.channel.fetch_message(message.id)
+
             if last:
                 await message.remove_reaction(last, client.user)
 
@@ -50,6 +53,9 @@ async def reaction_countdown(message):
             last = emoji
 
             await asyncio.sleep(REACTION_INTERVAL)
+
+        except discord.NotFound:
+            break
         except:
             break
 
@@ -62,10 +68,17 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # Only react to target webhook messages
+    if message.channel.id != REACTION_CHANNEL_ID:
+        return
+
+    # React to target webhooks
     if message.webhook_id and message.webhook_id in TARGET_WEBHOOK_IDS:
-        if message.channel.id == REACTION_CHANNEL_ID:
-            client.loop.create_task(reaction_countdown(message))
+        client.loop.create_task(reaction_countdown(message))
+        return
+
+    # React to human messages
+    if not message.author.bot and not message.webhook_id:
+        client.loop.create_task(reaction_countdown(message))
 
 # ================================
 # RUN
@@ -75,4 +88,3 @@ if __name__ == "__main__":
         raise RuntimeError("DISCORD_TOKEN_3 not set")
 
     client.run(TOKEN)
-
