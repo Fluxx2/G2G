@@ -225,8 +225,10 @@ async def on_message(message):
 
     if message.channel.id == AUTO_CHANNEL_ID:
         user_total = await count_user_messages_today(message.channel, message.author)
+
         if user_total > 0 and user_total % 10 == 0:
             announce = client.get_channel(WINS_ANNOUNCE_CHANNEL_ID)
+
             old = last_win_message.get(message.author.id)
             if old:
                 try:
@@ -234,10 +236,17 @@ async def on_message(message):
                 except:
                     pass
 
-            display_name = message.author.display_name if not message.webhook_id else message.author.name
+            # ✅ REQUIRED CHANGE
+            # Ping humans, show webhook name only
+            if message.webhook_id:
+                display = f"**{message.author.name}**"
+            else:
+                display = message.author.mention  # pings human
+
             last_win_message[message.author.id] = await announce.send(
-                f"**{display_name} wins done today so far ({user_total})**"
+                f"🏆 {display} **wins done today so far ({user_total})**"
             )
+
 
 @client.event
 async def on_reaction_add(reaction, user):
@@ -319,3 +328,4 @@ async def reset_now(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
