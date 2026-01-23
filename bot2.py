@@ -20,7 +20,7 @@ TARGET_USER_IDS = {
     906546198754775082,     # human
     1252645184777359391,    # human
     1463699794286346315,    # example webhook
-    222222222222222222,     # example webhook
+    1463037019021377639,     # example webhook
 }
 
 TARGET_EMOJI_ID = 1444022259789467709
@@ -328,4 +328,5 @@ async def reset_now(interaction: discord.Interaction):
 # RUN
 # ================================
 client.run(TOKEN)
+
 
