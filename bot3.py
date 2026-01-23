@@ -20,7 +20,7 @@ REACTIONS = [
 # Webhook IDs to react to
 TARGET_WEBHOOK_IDS = {
     1463699794286346315,  # Example webhook ID
-    222222222222222222,  # Example webhook ID
+    1463037019021377639,  # Example webhook ID
 }
 
 # ================================
@@ -88,3 +88,4 @@ if __name__ == "__main__":
         raise RuntimeError("DISCORD_TOKEN_3 not set")
 
     client.run(TOKEN)
+
